@@ -1,5 +1,4 @@
 #!/bin/bash
-. /home/ekaczmarczyk/anaconda3/etc/profile.d/conda.sh
 conda activate reps-tsfm
 
 config_files=(
