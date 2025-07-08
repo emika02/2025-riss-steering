@@ -12,7 +12,7 @@ from .chronos import perturb_activations_Chronos, get_activations_Chronos, predi
 #from .steering import get_steering_matrix
 from .utils import load_dataset, get_sample_from_dataset
 from .addition import compute_and_plot_separability, visualize_embeddings_pca, visualize_embeddings_lda
-
+from .data_generator import generate_trend_sine_sum_datasets
 
 def extract_activations(dataset_path, model_type="moment", num_samples=20, device="cpu"):
     """
@@ -133,103 +133,7 @@ def run_addition_experiment(
     
     #return results
     
+trend_df, sine_df, sum_df = generate_trend_sine_sum_datasets()
+run_addition_experiment(output_dir="results")
 
 
-
-def run_separability_analysis(
-    dataset1_path,
-    dataset2_path,
-    analysis_type,
-    model_type="moment",
-    num_samples=20,
-    output_dir="results",
-    device="cpu"
-):
-    """
-    Run a separability analysis experiment
-    
-    Parameters:
-    -----------
-    dataset1_path : str
-        Path to the first dataset (parquet)
-    dataset2_path : str
-        Path to the second dataset (parquet)
-    analysis_type : str
-        Type of analysis ('constant-sine', 'trend', 'periodicity')
-    model_type : str
-        Model type ('moment' or 'chronos')
-    num_samples : int
-        Number of samples to use from each dataset
-    output_dir : str
-        Directory to save results
-    device : str
-        Device to run the model on ('cpu' or 'cuda')
-        
-    Returns:
-    --------
-    dict
-        Dictionary containing the results of the analysis
-    """
-    logging.info(f"Running separability analysis: {dataset1_path} vs {dataset2_path}")
-    
-    os.makedirs(output_dir, exist_ok=True)
-    
-    dataset1_name = Path(dataset1_path).stem
-    dataset2_name = Path(dataset2_path).stem
-    output_prefix = f"{dataset1_name}_vs_{dataset2_name}_{analysis_type}"
-    
-    activations1 = extract_activations(dataset1_path, model_type, num_samples, device)
-    activations2 = extract_activations(dataset2_path, model_type, num_samples, device)
-    
-    analysis_results = compute_and_plot_separability(
-        activations1, 
-        activations2, 
-        prefix=os.path.join(output_dir, output_prefix)
-    )
-    
-    return analysis_results
-
-
-def plot_imputed_signals_with_smoothing(imputed_normal, imputed_perturbed, window_size=10, save_path=None):
-    """
-    Plot imputed signals (normal and perturbed) for time series data with smoothing.
-    Show non-smoothed series in pale colors and smoothed series in bold colors.
-    
-    Parameters:
-    - imputed_normal: The normal imputed signal (numpy array).
-    - imputed_perturbed: The perturbed imputed signal (numpy array).
-    - window_size: The window size for the moving average smoothing.
-    - save_path: If provided, saves the plot to this path as PDF.
-    """
-    palette = sns.color_palette()
-    imputed_normal_smoothed = pd.Series(imputed_normal).rolling(window=window_size, center=True).mean()
-    imputed_perturbed_smoothed = pd.Series(imputed_perturbed).rolling(window=window_size, center=True).mean()
-
-    sns.set(font_scale=2.0, style="ticks")
-    plt.style.use('seaborn-v0_8-whitegrid')
-
-    plt.rc('font', family='serif')
-
-    fig, ax = plt.subplots(figsize=(12, 6))
-
-    ax.plot(imputed_perturbed, label='Perturbed', color=palette[0], alpha=0.6, linewidth=2)
-    ax.plot(imputed_normal, label='Non-Perturbed', color=palette[1], alpha=0.6, linewidth=2)
-
-    ax.plot(imputed_perturbed_smoothed, label='Perturbed (Smoothed)', color=palette[0], linewidth=3)
-    ax.plot(imputed_normal_smoothed, label='Non-Perturbed (Smoothed)', color=palette[1], linewidth=3)
-
-    ax.set_xlabel("Timestep", fontsize=20)
-
-    ax.legend(loc='best', fontsize=20)
-
-    handles, labels = ax.get_legend_handles_labels()
-    labels = [label.replace(' (Smoothed)', '') for label in labels]
-    handles = [handles[2], handles[3]]
-    ax.legend(handles, labels, loc='best', fontsize=20, frameon=True)
-    
-    plt.tight_layout(pad=2)
-
-    if save_path:
-        plt.savefig(save_path, format='pdf', bbox_inches='tight')
-
-    plt.show() 
