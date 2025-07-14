@@ -66,7 +66,8 @@ def run_addition_experiment(
     model_type="moment",
     num_samples=20,
     output_dir="results",
-    device="cpu"
+    device="cpu",
+    fit_group=1
 ):
     """
     Run a addition experiment
@@ -101,7 +102,7 @@ def run_addition_experiment(
     source_activations = extract_activations(source_dataset_path, model_type, num_samples, device)
     target_activations = extract_activations(target_dataset_path, model_type, num_samples, device)
     pre_added_activations = extract_activations(added_dataset_path, model_type, num_samples, device)
-    post_added_activations = source_activations + target_activations   
+    post_added_activations = source_activations + target_activations 
     
     output_prefix = f"{source_name}_and_{target_name}"
     
@@ -110,30 +111,44 @@ def run_addition_experiment(
     
     for layer in layers_to_visualize:
         pca_path = os.path.join(output_dir, f"{output_prefix}_pca_layer_{layer}.pdf")
-        visualize_embeddings_pca(
+        one_reduced, other_reduced, pre_added_reduced = visualize_embeddings_pca(
             source_activations,
             target_activations,
             pre_added_activations,
-            post_added_activations
+            #post_added_activations,
             layer,
             title=f"Layer {layer} - PCA Visualization",
-            output_file=pca_path
+            output_file=pca_path,
+            fit_group=fit_group
         )
         
         lda_path = os.path.join(output_dir, f"{output_prefix}_lda_layer_{layer}.pdf")
-        visualize_embeddings_lda(
+        one_reduced, other_reduced, pre_added_reduced = visualize_embeddings_lda(
             source_activations,
             target_activations,
             pre_added_activations,
-            post_added_activations,
+            #post_added_activations,
             layer,
             title=f"Layer {layer} - LDA Visualization",
             output_file=lda_path
         )
     
-    #return results
-    
-trend_df, sine_df, sum_df = generate_trend_sine_sum_datasets()
-run_addition_experiment(output_dir="results")
+    return one_reduced, other_reduced, pre_added_reduced
+
+output_dir = "results"
+source_dataset_path = "datasets/trend.parquet" 
+target_dataset_path = "datasets/sine.parquet" 
+added_dataset_path = "datasets/trend_plus_sine.parquet"
+
+one_reduced, other_reduced, pre_added_reduced = run_addition_experiment(
+    source_dataset_path, target_dataset_path, added_dataset_path, output_dir=output_dir, fit_group=1)
+
+print("one_reduced mean:", one_reduced.mean(axis=0))
+print("other_reduced mean:", other_reduced.mean(axis=0))
+print("pre_added mean:", pre_added_reduced.mean(axis=0))
+#print("post_added mean:", post_added_reduced.mean(axis=0)
+
+
+
 
 

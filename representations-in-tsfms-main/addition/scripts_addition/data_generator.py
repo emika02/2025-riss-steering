@@ -4,6 +4,7 @@ import pandas as pd
 import yaml
 import logging
 import os
+import matplotlib.pyplot as plt
 
 
 class TimeSeriesGenerator:
@@ -216,7 +217,7 @@ def generate_and_save_dataset(config_file, dataset_name, save_to_datasets=True):
 
     return dataset
 
-def generate_trend_sine_sum_datasets(n_series=100, length=100, output_dir="datasets"):
+def generate_trend_sine_sum_datasets(n_series=512, length=512, output_dir="datasets"):
     trend_series = []
     sine_series = []
     sum_series = []
@@ -228,7 +229,7 @@ def generate_trend_sine_sum_datasets(n_series=100, length=100, output_dir="datas
             trend_type="linear",
             seasonality_type=None,
             noise_type=None,
-            trend_params={"slope": np.random.uniform(0.05, 0.2), "intercept": 0},
+            trend_params={"slope": np.random.uniform(0.05, 0.1), "intercept": 0},
         )
         trend = trend_gen.generate_trend()
 
@@ -239,8 +240,8 @@ def generate_trend_sine_sum_datasets(n_series=100, length=100, output_dir="datas
             seasonality_type="sine",
             noise_type=None,
             seasonality_params={
-                "amplitude": np.random.uniform(0.5, 1.0),
-                "period": np.random.uniform(10, 30),
+                "amplitude": np.random.uniform(25, 27),
+                "period": np.random.uniform(128, 128),
             },
         )
         sine = sine_gen.generate_seasonality()
@@ -266,3 +267,38 @@ def generate_trend_sine_sum_datasets(n_series=100, length=100, output_dir="datas
     print(f"Saved to {output_dir}/[trend|sine|trend_plus_sine].parquet")
 
     return trend_df, sine_df, sum_df
+
+trend_df, sine_df, sum_df = generate_trend_sine_sum_datasets()
+
+import os
+
+# Create output directory if it doesn't exist
+os.makedirs("plots", exist_ok=True)
+
+# Load the data
+trend_df = pd.read_parquet("datasets/trend.parquet")
+sine_df = pd.read_parquet("datasets/sine.parquet")
+sum_df = pd.read_parquet("datasets/trend_plus_sine.parquet")
+
+# Extract first time series (each row contains a full series as a list/array)
+trend_series = pd.Series(trend_df.iloc[0, 0])
+sine_series = pd.Series(sine_df.iloc[0, 0])
+sum_series = pd.Series(sum_df.iloc[0, 0])
+
+# Plot and save
+plt.figure(figsize=(12, 6))
+trend_series.plot(label="Trend")
+sine_series.plot(label="Sine")
+sum_series.plot(label="Trend + Sine")
+
+plt.title("Example Time Series from Each Dataset")
+plt.xlabel("Timestep")
+plt.ylabel("Value")
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
+
+# Save to file instead of showing
+output_path = "plots/example_time_series.png"
+plt.savefig(output_path)
+print(f"Plot saved to {output_path}")
