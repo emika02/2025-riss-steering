@@ -63,11 +63,13 @@ def run_addition_experiment(
     source_dataset_path, 
     target_dataset_path,
     added_dataset_path,
+    reference_dataset_path,
     model_type="moment",
     num_samples=20,
     output_dir="results",
     device="cpu",
-    fit_group=1
+    fit_group=1,
+    two_components=True
 ):
     """
     Run a addition experiment
@@ -102,6 +104,7 @@ def run_addition_experiment(
     source_activations = extract_activations(source_dataset_path, model_type, num_samples, device)
     target_activations = extract_activations(target_dataset_path, model_type, num_samples, device)
     pre_added_activations = extract_activations(added_dataset_path, model_type, num_samples, device)
+    ref_activations = extract_activations(reference_dataset_path, model_type, num_samples, device)
     post_added_activations = source_activations + target_activations 
     
     output_prefix = f"{source_name}_and_{target_name}"
@@ -110,43 +113,48 @@ def run_addition_experiment(
     layers_to_visualize = [0, no_layers//2, no_layers-1]
     
     for layer in layers_to_visualize:
-        pca_path = os.path.join(output_dir, f"{output_prefix}_pca_layer_{layer}.pdf")
-        one_reduced, other_reduced, pre_added_reduced = visualize_embeddings_pca(
+        pca_path = os.path.join(output_dir, f"{output_prefix}_pca_layer_{layer}_fit_group_{fit_group}.pdf")
+        one_reduced, other_reduced, pre_added_reduced, post_added_reduced, ref_reduced = visualize_embeddings_pca(
             source_activations,
             target_activations,
             pre_added_activations,
-            #post_added_activations,
+            post_added_activations,
+            ref_activations,
             layer,
             title=f"Layer {layer} - PCA Visualization",
             output_file=pca_path,
             fit_group=fit_group
         )
         
-        lda_path = os.path.join(output_dir, f"{output_prefix}_lda_layer_{layer}.pdf")
-        one_reduced, other_reduced, pre_added_reduced = visualize_embeddings_lda(
+        lda_path = os.path.join(output_dir, f"{output_prefix}_lda_layer_{layer}_2d_{two_components}.pdf")
+        one_reduced, other_reduced, pre_added_reduced, post_added_reduced, ref_reduced = visualize_embeddings_lda(
             source_activations,
             target_activations,
             pre_added_activations,
-            #post_added_activations,
+            post_added_activations,
+            ref_activations,
             layer,
             title=f"Layer {layer} - LDA Visualization",
-            output_file=lda_path
+            output_file=lda_path,
+            two_components=two_components
         )
     
-    return one_reduced, other_reduced, pre_added_reduced
+    return one_reduced, other_reduced, pre_added_reduced, post_added_reduced, ref_reduced
 
 output_dir = "results"
 source_dataset_path = "datasets/trend.parquet" 
 target_dataset_path = "datasets/sine.parquet" 
 added_dataset_path = "datasets/trend_plus_sine.parquet"
+reference_dataset_path = "datasets/exp.parquet"
 
-one_reduced, other_reduced, pre_added_reduced = run_addition_experiment(
-    source_dataset_path, target_dataset_path, added_dataset_path, output_dir=output_dir, fit_group=1)
+one_reduced, other_reduced, pre_added_reduced, post_added_reduced, ref_reduced = run_addition_experiment(
+    source_dataset_path, target_dataset_path, added_dataset_path, reference_dataset_path,
+    output_dir=output_dir, fit_group=2, two_components=False)
 
 print("one_reduced mean:", one_reduced.mean(axis=0))
 print("other_reduced mean:", other_reduced.mean(axis=0))
 print("pre_added mean:", pre_added_reduced.mean(axis=0))
-#print("post_added mean:", post_added_reduced.mean(axis=0)
+print("post_added mean:", post_added_reduced.mean(axis=0))
 
 
 
