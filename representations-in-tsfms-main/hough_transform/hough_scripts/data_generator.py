@@ -1,297 +1,322 @@
-from nnsight import NNsight
-import torch
 import numpy as np
-from .utils import load_dataset
-from .perturb import identity
+import torch
+import pandas as pd
+import yaml
 import logging
-import argparse
-from chronos import ChronosPipeline
+import os
+import matplotlib.pyplot as plt
 
 
-def get_Chronos(device="cpu"):
-    torch.set_default_device(device)
-    pipeline = ChronosPipeline.from_pretrained(
-        "amazon/chronos-t5-large",
-        device_map=device,
+class TimeSeriesGenerator:
+    def __init__(
+        self,
+        length=100,
+        trend_type="linear",
+        seasonality_type="sine",
+        noise_type="gaussian",
+        trend_params=None,
+        seasonality_params=None,
+        noise_params=None,
+    ):
+        self.length = length
+        self.trend_type = trend_type
+        self.seasonality_type = seasonality_type
+        self.noise_type = noise_type
+        self.trend_params = trend_params if trend_params else {}
+        self.seasonality_params = seasonality_params if seasonality_params else {}
+        self.noise_params = noise_params if noise_params else {}
+        self.data = None
+        self.trend = None
+        self.seasonality = None
+        self.noise = None
+
+    def generate_trend(self):
+        if self.trend_type == "linear":
+            slope = self.trend_params.get("slope", 0.1)
+            intercept = self.trend_params.get("intercept", 0)
+            self.trend = slope * np.arange(self.length) + intercept
+        elif self.trend_type == "exponential":
+            growth_rate = self.trend_params.get("growth_rate", 0.01)
+            self.trend = np.exp(growth_rate * np.arange(self.length))
+        else:
+            self.trend = None  # No trend component
+            intercept = self.trend_params.get("intercept", 0)
+            self.trend = intercept * np.ones(self.length)
+        return self.trend
+
+    def generate_seasonality(self):
+        t = np.arange(self.length)
+        if self.seasonality_type == "sine":
+            amplitude = self.seasonality_params.get("amplitude", 1)
+            period = self.seasonality_params.get("period", 20)
+            self.seasonality = amplitude * np.sin(2 * np.pi * t / period)
+        elif self.seasonality_type == "square":
+            amplitude = self.seasonality_params.get("amplitude", 1)
+            period = self.seasonality_params.get("period", 20)
+            self.seasonality = amplitude * np.sign(np.sin(2 * np.pi * t / period))
+        elif self.seasonality_type == "triangle":
+            amplitude = self.seasonality_params.get("amplitude", 1)
+            period = self.seasonality_params.get("period", 20)
+            self.seasonality = amplitude * (
+                2 * np.abs(2 * (t / period - np.floor(t / period + 0.5))) - 1
+            )
+        elif self.seasonality_type == "sawtooth":
+            amplitude = self.seasonality_params.get("amplitude", 1)
+            period = self.seasonality_params.get("period", 20)
+            self.seasonality = amplitude * (
+                2 * (t / period - np.floor(t / period + 0.5))
+            )
+        else:
+            self.seasonality = None  # No seasonality component
+        return self.seasonality
+
+    def generate_noise(self):
+        if self.noise_type == "gaussian":
+            mean = self.noise_params.get("mean", 0)
+            stddev = self.noise_params.get("stddev", 1)
+            self.noise = np.random.normal(mean, stddev, self.length)
+        elif self.noise_type == "uniform":
+            low = self.noise_params.get("low", -1)
+            high = self.noise_params.get("high", 1)
+            self.noise = np.random.uniform(low, high, self.length)
+        else:
+            self.noise = None  # No noise component
+        return self.noise
+
+    def generate_series(self):
+        trend = self.generate_trend()
+        seasonality = self.generate_seasonality()
+        noise = self.generate_noise()
+
+        # Ensure we handle the case where a component is None
+        self.data = np.zeros(self.length)
+        if trend is not None:
+            self.data += trend
+        if seasonality is not None:
+            self.data += seasonality
+        if noise is not None:
+            self.data += noise
+        return self.data
+
+
+class DiverseTimeSeriesDataset:
+    def __init__(self, config_file):
+        with open(config_file, "r") as file:
+            self.config = yaml.safe_load(file)
+        self.n_series = self.config.get("n_series", 100)
+        self.length = self.config.get("length", 100)
+        self.dataset = pd.DataFrame()
+
+    def generate_diverse_dataset(self):
+        for i in range(self.n_series):
+            trend_type = np.random.choice(self.config["trend_types"])
+            seasonality_type = np.random.choice(self.config["seasonality_types"])
+            noise_type = np.random.choice(self.config["noise_types"])
+
+            trend_params = {
+                "slope": np.random.uniform(*self.config["trend_params"]["slope"]),
+                "intercept": np.random.uniform(
+                    *self.config["trend_params"]["intercept"]
+                ),
+                "growth_rate": np.random.uniform(
+                    *self.config["trend_params"]["growth_rate"]
+                ),
+            }
+
+            seasonality_params = {
+                "amplitude": np.random.uniform(
+                    *self.config["seasonality_params"]["amplitude"]
+                ),
+                "period": np.random.uniform(
+                    *self.config["seasonality_params"]["period"]
+                ),
+            }
+
+            noise_params = {
+                "mean": np.random.uniform(*self.config["noise_params"]["mean"]),
+                "stddev": np.random.uniform(*self.config["noise_params"]["stddev"]),
+                "low": np.random.uniform(*self.config["noise_params"]["low"]),
+                "high": np.random.uniform(*self.config["noise_params"]["high"]),
+            }
+
+            generator = TimeSeriesGenerator(
+                length=self.length,
+                trend_type=trend_type,
+                seasonality_type=seasonality_type,
+                noise_type=noise_type,
+                trend_params=trend_params,
+                seasonality_params=seasonality_params,
+                noise_params=noise_params,
+            )
+
+            series_data = generator.generate_series()
+            reshaped_series = series_data.flatten()
+
+            # Creating a label dictionary for the generated series, passing None if component not present
+            label = {
+                "trend_type": trend_type if generator.trend is not None else "none",
+                "trend_slope": (
+                    trend_params["slope"] if generator.trend is not None else None
+                ),
+                "trend_intercept": (
+                    trend_params["intercept"] if generator.trend is not None else None
+                ),
+                "trend_growth_rate": (
+                    trend_params["growth_rate"] if generator.trend is not None else None
+                ),
+                "seasonality_type": (
+                    seasonality_type if generator.seasonality is not None else "none"
+                ),
+                "seasonality_amplitude": (
+                    seasonality_params["amplitude"]
+                    if generator.seasonality is not None
+                    else None
+                ),
+                "seasonality_period": (
+                    seasonality_params["period"]
+                    if generator.seasonality is not None
+                    else None
+                ),
+                "noise_type": noise_type if generator.noise is not None else "none",
+                "noise_mean": (
+                    noise_params["mean"] if generator.noise is not None else None
+                ),
+                "noise_stddev": (
+                    noise_params["stddev"] if generator.noise is not None else None
+                ),
+                "noise_low": (
+                    noise_params["low"] if generator.noise is not None else None
+                ),
+                "noise_high": (
+                    noise_params["high"] if generator.noise is not None else None
+                ),
+            }
+
+            # Store the reshaped series and the labels
+            series_df = pd.DataFrame({"series": [reshaped_series], **label})
+
+            self.dataset = pd.concat([self.dataset, series_df], ignore_index=True)
+
+        return self.dataset
+
+
+def generate_and_save_dataset(config_file, dataset_name, save_to_datasets=True):
+    diverse_dataset_generator = DiverseTimeSeriesDataset(config_file=config_file)
+    dataset = diverse_dataset_generator.generate_diverse_dataset()
+    (
+        dataset.to_parquet("datasets/" + dataset_name, index=False)
+        if save_to_datasets
+        else None
     )
-    pipeline.model.to(device)
-    nnsight_model = NNsight(pipeline.model, device)
-    logging.debug("Chronos model loaded")
-    return nnsight_model, pipeline.tokenizer
 
-def predict_Chronos(
-    context, # (batch, sequence_length)
-    prediction_length=64, # Time steps to predict, max 64
-    num_samples=1, # Number of sample paths to predict
-    temperature=1.0,
-    top_k=50,
-    top_p=1.0,
-    device="cpu",
-) -> torch.Tensor:
-    """
-    Get forecasts for the given time series.
+    X = np.stack(dataset["series"].values)
+    X_tensor = torch.tensor(X, dtype=torch.float32)
+    logging.debug(f"X_tensor.shape: {X_tensor.shape}")
+    logging.debug(f"dataset.columns: {dataset.columns}")
+    logging.debug(f"dataset.head(): {dataset.head()}")
 
-    Parameters
-    ----------
-    context
-        Input series. This is either a 1D tensor, or a list
-        of 1D tensors, or a 2D tensor whose first dimension
-        is batch. In the latter case, use left-padding with
-        ``torch.nan`` to align series of different lengths.
-    prediction_length
-        Time steps to predict. Defaults to what specified
-        in ``self.model.config``.
-    num_samples
-        Number of sample paths to predict. Defaults to what
-        specified in ``self.model.config``.
-    temperature
-        Temperature to use for generating sample tokens.
-        Defaults to what specified in ``self.model.config``.
-    top_k
-        Top-k parameter to use for generating sample tokens.
-        Defaults to what specified in ``self.model.config``.
-    top_p
-        Top-p parameter to use for generating sample tokens.
-        Defaults to what specified in ``self.model.config``.
-    limit_prediction_length
-        Force prediction length smaller or equal than the
-        built-in prediction length from the model. True by
-        default. When true, fail loudly if longer predictions
-        are requested, otherwise longer predictions are allowed.
+    return dataset
 
-    Returns
-    -------
-    samples
-        Tensor of sample forecasts, of shape
-        (batch_size, num_samples, prediction_length).
-    """
-    context_tensor = torch.tensor(context, dtype=torch.float32, device=device)
-    
-    chronos_model, chronos_tokenizer = get_Chronos(device=device)
-    chronos_model = chronos_model._model
+def generate_trend_sine_sum_datasets(n_series=512, length=512, output_dir="datasets"):
+    trend_series = []
+    sine_series = []
+    sum_series = []
+    exp_series = []
 
-    predictions = []
-    remaining = prediction_length
-
-    while remaining > 0:
-        token_ids, attention_mask, scale = chronos_tokenizer.context_input_transform(
-            context_tensor
+    for _ in range(n_series):
+        # Trend generator
+        trend_gen = TimeSeriesGenerator(
+            length=length,
+            trend_type="linear",
+            seasonality_type=None,
+            noise_type=None,
+            trend_params={"slope": np.random.uniform(0.5, 1), "intercept": 0}, #(0.05,0.1)
         )
-        samples = chronos_model(
-            token_ids.to(device),
-            attention_mask.to(device),
-            min(remaining, prediction_length),
-            num_samples,
-            temperature,
-            top_k,
-            top_p,
+        trend = trend_gen.generate_trend()
+
+        # Sine generator
+        sine_gen = TimeSeriesGenerator(
+            length=length,
+            trend_type=None,
+            seasonality_type="sine",
+            noise_type=None,
+            seasonality_params={
+                "amplitude": np.random.uniform(45, 50), #(25,27)
+                "period": np.random.uniform(64,64), #(128,128)
+            },
         )
-        prediction = chronos_tokenizer.output_transform(
-            samples.to(scale.device), scale
-        )
-
-        predictions.append(prediction)
-        remaining -= prediction.shape[-1]
-
-        if remaining <= 0:
-            break
-
-        context_tensor = torch.cat(
-            [context_tensor, prediction.median(dim=1).values], dim=-1
-        )
-
-    return torch.cat(predictions, dim=-1)
-
-def get_activations_Chronos(
-    context, # (batch, sequence_length)
-    prediction_length=1, # Time steps to predict, max 64
-    num_samples=1, # Number of sample paths to predict
-    temperature=1.0,
-    top_k=50,
-    top_p=1.0,
-    device="cpu",
-) -> torch.Tensor:
-    """
-    Get forecasts for the given time series.
-
-    Parameters
-    ----------
-    context
-        Input series. This is either a 1D tensor, or a list
-        of 1D tensors, or a 2D tensor whose first dimension
-        is batch. In the latter case, use left-padding with
-        ``torch.nan`` to align series of different lengths.
-    prediction_length
-        Time steps to predict. Defaults to what specified
-        in ``self.model.config``.
-    num_samples
-        Number of sample paths to predict. Defaults to what
-        specified in ``self.model.config``.
-    temperature
-        Temperature to use for generating sample tokens.
-        Defaults to what specified in ``self.model.config``.
-    top_k
-        Top-k parameter to use for generating sample tokens.
-        Defaults to what specified in ``self.model.config``.
-    top_p
-        Top-p parameter to use for generating sample tokens.
-        Defaults to what specified in ``self.model.config``.
-    limit_prediction_length
-        Force prediction length smaller or equal than the
-        built-in prediction length from the model. True by
-        default. When true, fail loudly if longer predictions
-        are requested, otherwise longer predictions are allowed.
-
-    Returns
-    -------
-    samples
-        Tensor of sample forecasts, of shape
-        (batch_size, num_samples, prediction_length).
-    """
-    chronos_model, chronos_tokenizer = get_Chronos(device=device)
-    context_tensor = torch.tensor(context, dtype=torch.float32, device=device)
-
-    token_ids, attention_mask, scale = chronos_tokenizer.context_input_transform(
-        context_tensor
-    )
-    
-    activations_encoder = []
-    activations_decoder = []
-    logging.debug("Extracting activations for Chronos model")
-    with chronos_model.trace(token_ids.to(device),
-        attention_mask.to(device),
-        prediction_length,
-        num_samples,
-        temperature,
-        top_k,
-        top_p,) as trace:
-        for i, layer in enumerate(chronos_model.model.encoder.block):
-            activations_encoder.append(layer.output[0].clone().save())
-        for i, layer in enumerate(chronos_model.model.decoder.block):
-            activations_decoder.append(layer.output[0].clone().save())
-    logging.debug("Activations extracted")
-
-    activations_encoder = torch.stack(activations_encoder, dim=0)
-    activations_decoder = torch.stack(activations_decoder, dim=0)
-    return activations_encoder, activations_decoder
-
-def perturb_activations_Chronos(
-    dataset, # (batch, channel, sequence_length)
-    prediction_length=64, # Time steps to predict, max 64
-    num_samples=1, # Number of sample paths to predict
-    temperature=1.0,
-    top_k=50,
-    top_p=1.0,
-    device="cpu",
-    perturbation_fn=identity,
-    perturbation_payload=torch.ones(24, 513, 1024),
-    layer_indices=list(range(24)),
-    token_indices=list(range(513)),
-):
-    """
-    Perturb activations in specified layers and tokens using NNsight and a custom perturbation function.
-
-    Args:
-        dataset (torch.Tensor): Input data tensor of shape (batch_size, channels, sequence_length).
-        device (torch.device): Device to run the model on ('cpu' or 'cuda:x').
-        layer_indices (int or list of int): Indices of layers to perturb.
-        token_indices (int or list of int): Indices of tokens to perturb.
-        perturbation_fn (callable): Function to apply to the activations.
-
-    Returns:
-        torch.Tensor: The output of the model after perturbation.
-    """
-    # Ensure layer_indices and token_indices are lists
-    if isinstance(layer_indices, int):
-        layer_indices = [layer_indices]
-    if isinstance(token_indices, int):
-        token_indices = [token_indices]
-    if not isinstance(perturbation_payload, torch.Tensor):
-        perturbation_payload = torch.tensor(perturbation_payload, device=device)
-    batch, channels, seq_len = dataset.shape
-    dataset = dataset.reshape(batch, seq_len)
-    context_tensor = torch.tensor(dataset, dtype=torch.float32, device=device)
-    model_outputs = None
-    
-    chronos_model, chronos_tokenizer = get_Chronos(device=device)
-    
-    predictions = []
-    remaining = prediction_length
-    
-    while remaining > 0:
-        token_ids, attention_mask, scale = chronos_tokenizer.context_input_transform(
-            context_tensor
-        )
-
-        with chronos_model.trace(token_ids,
-            attention_mask,
-            min(remaining, prediction_length),
-            num_samples,
-            temperature,
-            top_k,
-            top_p,) as trace:
-            for block_idx, transformer_block in enumerate(chronos_model.model.encoder.block):
-                if block_idx in layer_indices:
-                    current_layer_activations = transformer_block.layer[
-                        -1
-                    ].output.clone()  # (1, 64, 1024) (batch, tokens, features)
-                    for token_idx in token_indices:
-                        current_layer_activations[:, token_idx, :] = perturbation_fn(
-                            current_layer_activations[:, token_idx, :], perturbation_payload[block_idx, token_idx, :]
-                        ) # will get broadcasted along the batch dimension, if necessary, automatically
-                    transformer_block.layer[-1].output = current_layer_activations
-                    logging.debug(f"Perturbed layer {block_idx}, tokens {token_indices}")
-            model_outputs = chronos_model.output.save()
-        prediction = chronos_tokenizer.output_transform(
-                    model_outputs.to(scale.device), scale
-        )
+        sine = sine_gen.generate_seasonality()
         
-        predictions.append(prediction)
-        remaining -= prediction.shape[-1]
-        
-        if remaining <= 0:
-            break
-        
-        context_tensor = torch.cat(
-            [context_tensor, prediction.median(dim=1).values], dim=-1
+        exp_gen = TimeSeriesGenerator(
+            length=length,
+            trend_type="exponential",
+            seasonality_type=None,
+            noise_type=None,
+            trend_params={
+                "growth_rate": np.random.uniform(0.01, 0.015), #(25,27)
+            },
         )
-        
-    prediction_final = torch.cat(predictions, dim=-1)
-    
-    logging.debug(f"Activations perturbed, output shape:{prediction_final.shape}")
-    return prediction_final
+        exp = exp_gen.generate_trend()
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Extract activations from Chronos model"
-    )
-    parser.add_argument(
-        "--dataset", type=str, required=True, help="Path to the dataset file"
-    )
-    parser.add_argument(
-        "--device",
-        type=str,
-        default="cuda" if torch.cuda.is_available() else "cpu",
-        help="Device to run the model on (e.g., 'cpu', 'cuda')",
-    )
-    parser.add_argument("--log", type=str, default="INFO", help="Logging level")
+        # Literal sum of trend and sine
+        added = trend + sine
 
-    args = parser.parse_args()
+        trend_series.append(trend)
+        sine_series.append(sine)
+        sum_series.append(added)
+        exp_series.append(exp)
 
-    logging.basicConfig(level=args.log)
+    # Convert to DataFrames
+    trend_df = pd.DataFrame({"series": [s for s in trend_series]})
+    sine_df = pd.DataFrame({"series": [s for s in sine_series]})
+    sum_df = pd.DataFrame({"series": [s for s in sum_series]})
+    exp_df = pd.DataFrame({"series": [s for s in exp_series]})
 
-    device = torch.device(args.device)
-    dataset = load_dataset(dataset_path=args.dataset, type="torch", device=device).squeeze(1)
+    # Save
+    os.makedirs(output_dir, exist_ok=True)
+    trend_df.to_parquet(os.path.join(output_dir, "trend.parquet"), index=False)
+    sine_df.to_parquet(os.path.join(output_dir, "sine.parquet"), index=False)
+    sum_df.to_parquet(os.path.join(output_dir, "trend_plus_sine.parquet"), index=False)
+    exp_df.to_parquet(os.path.join(output_dir, "exp.parquet"), index=False)
 
-    activations, _ = get_activations_Chronos(dataset, device=device)
-    logging.debug(f"Activations shape: {activations.shape}")
+    print(f"Saved to {output_dir}/[trend|sine|trend_plus_sine].parquet")
 
-    output_file = args.dataset.split("/")[-1].split(".")[0] + "_activations.npy"
-    output_file = f"activations_chronos/{output_file}"
+    return trend_df, sine_df, sum_df, exp_df
 
-    logging.debug(f"Saving activations to {output_file}")
-    activations = (
-        activations.cpu().numpy() if device is not "cpu" else activations.numpy()
-    )
-    np.save(output_file, activations)
-    logging.info(f"Activations saved to {output_file}")
+trend_df, sine_df, sum_df, exp_df = generate_trend_sine_sum_datasets()
+
+import os
+
+# Create output directory if it doesn't exist
+os.makedirs("plots", exist_ok=True)
+
+# Load the data
+trend_df = pd.read_parquet("datasets/trend.parquet")
+sine_df = pd.read_parquet("datasets/sine.parquet")
+sum_df = pd.read_parquet("datasets/trend_plus_sine.parquet")
+exp_df = pd.read_parquet("datasets/exp.parquet")
+
+# Extract first time series (each row contains a full series as a list/array)
+trend_series = pd.Series(trend_df.iloc[0, 0])
+sine_series = pd.Series(sine_df.iloc[0, 0])
+sum_series = pd.Series(sum_df.iloc[0, 0])
+exp_series = pd.Series(exp_df.iloc[0, 0])
+
+# Plot and save
+plt.figure(figsize=(12, 6))
+trend_series.plot(label="Trend")
+sine_series.plot(label="Sine")
+sum_series.plot(label="Trend + Sine")
+exp_series.plot(label="exp")
+
+plt.title("Example Time Series from Each Dataset")
+plt.xlabel("Timestep")
+plt.ylabel("Value")
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
+
+# Save to file instead of showing
+output_path = "plots/example_time_series.png"
+plt.savefig(output_path)
+print(f"Plot saved to {output_path}")

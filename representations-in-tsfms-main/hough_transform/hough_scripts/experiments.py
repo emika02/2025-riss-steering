@@ -14,6 +14,101 @@ from .utils import load_dataset, get_sample_from_dataset
 from .separability import compute_and_plot_separability, visualize_embeddings_pca, visualize_embeddings_lda
 
 
+
+def ab_to_r_theta(a_vals, b_vals):
+    """
+    Convert lines in slope-intercept form (y = a*x + b)
+    to Hough space parameters (r, theta).
+
+    Parameters:
+        a_vals: array-like of slopes (a)
+        b_vals: array-like of intercepts (b)
+
+    Returns:
+        r: ndarray of distances from origin
+        theta: ndarray of angles (in radians) of normal vector
+    """
+    a_vals = np.asarray(a_vals, dtype=float)
+    b_vals = np.asarray(b_vals, dtype=float)
+
+    # Handle vertical lines (infinite slope)
+    vertical_mask = np.isinf(a_vals)
+    theta = np.empty_like(a_vals)
+    r = np.empty_like(b_vals)
+
+    # General case: a is finite
+    finite_mask = ~vertical_mask
+    theta[finite_mask] = np.arctan(-1 / a_vals[finite_mask])
+    r[finite_mask] = b_vals[finite_mask] * np.sin(theta[finite_mask])
+
+    # Special case: vertical lines → θ = 0, r = x-intercept
+    theta[vertical_mask] = 0.0
+    r[vertical_mask] = b_vals[vertical_mask]  # interpret b as x-intercept here
+
+    return r, theta
+
+def vector_point_to_ab(v, p):
+    """
+    Given a 2D direction vector v = (vx, vy)
+    and a point p = (px, py), compute the line y = ax + b
+
+    Returns:
+        a: slope (or np.inf for vertical line)
+        b: intercept (ignored if vertical)
+    """
+    vx, vy = v
+    px, py = p
+
+    if vx == 0:
+        a = np.inf
+        b = px  # x-intercept
+    else:
+        a = vy / vx
+        b = py - a * px
+
+    return a, b
+
+
+
+def cartesian_to_hyperspherical(vectors):
+    """
+    Convert a batch of Cartesian vectors to hyperspherical coordinates.
+    
+    Parameters:
+        vectors: ndarray of shape (num_samples, dim)
+    
+    Returns:
+        angles: ndarray of shape (num_samples, dim - 1)
+    """
+    vectors = np.array(vectors, dtype=float)
+    num_samples, dim = vectors.shape
+
+    # Normalize each vector
+    norms = np.linalg.norm(vectors, axis=1, keepdims=True)
+    if np.any(norms == 0):
+        raise ValueError("Some vectors are zero and cannot be normalized.")
+    vectors = vectors / norms
+
+    angles = np.zeros((num_samples, dim - 1))
+
+    for i in range(dim - 1):
+        if i < dim - 2:
+            # For angle θ_i: numerator = x_{n−1−i}
+            idx = dim - 1 - i
+            numerator = vectors[:, idx]
+
+            # Denominator = norm of vec[:n-i]
+            denominator = np.linalg.norm(vectors[:, :idx + 1], axis=1)
+            val = np.clip(numerator / denominator, -1.0, 1.0)
+            angle = np.arccos(val)
+        else:
+            # Final angle: arctan2(x2, x1)
+            angle = np.arctan2(vectors[:, 1], vectors[:, 0])
+        
+        angles[:, i] = angle
+
+    return angles  # shape: (num_samples, dim - 1)
+
 def extract_activations(dataset_path, model_type="moment", num_samples=20, device="cpu"):
     """
     Extract activations from a dataset for the specified model
@@ -59,10 +154,10 @@ def extract_activations(dataset_path, model_type="moment", num_samples=20, devic
         raise ValueError(f"Unsupported model type: {model_type}")
 
 
-def run_steering_experiment(
+def run_angular_experiment(
     source_dataset_path, 
     target_dataset_path,
-    input_sample_path,
+    input_sample_path=None,
     input_sample_index=0,
     model_type="moment",
     method="mean",
@@ -117,24 +212,30 @@ def run_steering_experiment(
     
     source_activations = extract_activations(source_dataset_path, model_type, num_samples, device)
     target_activations = extract_activations(target_dataset_path, model_type, num_samples, device)
+    print(source_activations.shape)
     
-    steering_vector = get_steering_matrix(source_activations, target_activations, method=method)
-    
-    if second_target_dataset_path and beta is not None:
-        second_target_name = Path(second_target_dataset_path).stem
-        second_target_activations = extract_activations(second_target_dataset_path, model_type, num_samples, device)
-        second_steering_vector = get_steering_matrix(source_activations, second_target_activations, method=method)
+    if input_sample_path == None:
+        steering_vector = get_steering_matrix(source_activations, target_activations, method=method)
+        steering_vector = np.mean(steering_vector, axis=1)
         
-        compositional_vector = (steering_vector * alpha + second_steering_vector * beta)
-        steering_vector = compositional_vector
-        output_prefix = f"{source_name}_to_{target_name}_{second_target_name}_{method}_alpha_{alpha}_beta_{beta}"
     else:
-        output_prefix = f"{source_name}_to_{target_name}_{method}_alpha_{alpha}"
+        input_dataset = pd.read_parquet(input_sample_path)
+        input_sample = get_sample_from_dataset(input_dataset, input_sample_index)
+        input_sample_expanded = input_sample[np.newaxis, ...]  # shape: (1, 24, 64, 1024)
+        # Bring sample dimension to front in activations: (20, 24, 64, 1024)
+        source_samples = source_activations.transpose(1, 0, 2, 3)
+        target_samples = target_activations.transpose(1, 0, 2, 3)
+        # Raw difference vectors (no reduction)
+        source_differences = source_samples - input_sample_expanded  # shape: (20, 24, 64, 1024)
+        target_differences = target_samples - input_sample_expanded  
+        steering_vector = np.concatenate([source_differences, target_differences], axis=0) # shape: (40, 24
+        steering_vector = steering_vector.transpose(1, 0, 2, 3)    
+        steering_vector = np.mean(steering_vector, axis=2)
     
-    input_dataset = pd.read_parquet(input_sample_path)
-    input_sample = get_sample_from_dataset(input_dataset, input_sample_index)
+    output_prefix = f"{source_name}_to_{target_name}_{method}_alpha_{alpha}"
     
-    if model_type.lower() == "moment":
+    
+    '''if model_type.lower() == "moment":
         non_perturbed_output = perturb_activations_MOMENT(input_sample, device=device)
         perturbed_output = perturb_activations_MOMENT(
             input_sample, 
@@ -168,12 +269,16 @@ def run_steering_experiment(
         raise ValueError(f"Unsupported model type: {model_type}")
     
     plot_path = os.path.join(output_dir, f"{output_prefix}.pdf")
-    plot_imputed_signals_with_smoothing(non_perturbed_output, perturbed_output, save_path=plot_path)
+    plot_imputed_signals_with_smoothing(non_perturbed_output, perturbed_output, save_path=plot_path)'''
     
     no_layers = source_activations.shape[0]
     layers_to_visualize = [0, no_layers//2, no_layers-1]
     
+    angular_vectors = [] #np.zeros((no_layers,))
     for layer in layers_to_visualize:
+        steering_vector_1 = steering_vector.copy()[layer]
+        angular_vectors.append(cartesian_to_hyperspherical(steering_vector_1))
+        
         pca_path = os.path.join(output_dir, f"{output_prefix}_pca_layer_{layer}.pdf")
         visualize_embeddings_pca(
             source_activations,
@@ -192,67 +297,15 @@ def run_steering_experiment(
             output_file=lda_path
         )
     
-    results = {
+    '''results = {
         "non_perturbed_output": non_perturbed_output,
         "perturbed_output": perturbed_output,
-        "plot_path": plot_path
-    }
+        "plot_path": plot_path,
+        "steering_vector": steering_vector
+    }'''
     
-    return results
+    return angular_vectors
 
-
-def run_separability_analysis(
-    dataset1_path,
-    dataset2_path,
-    analysis_type,
-    model_type="moment",
-    num_samples=20,
-    output_dir="results",
-    device="cpu"
-):
-    """
-    Run a separability analysis experiment
-    
-    Parameters:
-    -----------
-    dataset1_path : str
-        Path to the first dataset (parquet)
-    dataset2_path : str
-        Path to the second dataset (parquet)
-    analysis_type : str
-        Type of analysis ('constant-sine', 'trend', 'periodicity')
-    model_type : str
-        Model type ('moment' or 'chronos')
-    num_samples : int
-        Number of samples to use from each dataset
-    output_dir : str
-        Directory to save results
-    device : str
-        Device to run the model on ('cpu' or 'cuda')
-        
-    Returns:
-    --------
-    dict
-        Dictionary containing the results of the analysis
-    """
-    logging.info(f"Running separability analysis: {dataset1_path} vs {dataset2_path}")
-    
-    os.makedirs(output_dir, exist_ok=True)
-    
-    dataset1_name = Path(dataset1_path).stem
-    dataset2_name = Path(dataset2_path).stem
-    output_prefix = f"{dataset1_name}_vs_{dataset2_name}_{analysis_type}"
-    
-    activations1 = extract_activations(dataset1_path, model_type, num_samples, device)
-    activations2 = extract_activations(dataset2_path, model_type, num_samples, device)
-    
-    analysis_results = compute_and_plot_separability(
-        activations1, 
-        activations2, 
-        prefix=os.path.join(output_dir, output_prefix)
-    )
-    
-    return analysis_results
 
 
 def plot_imputed_signals_with_smoothing(imputed_normal, imputed_perturbed, window_size=10, save_path=None):
@@ -298,3 +351,24 @@ def plot_imputed_signals_with_smoothing(imputed_normal, imputed_perturbed, windo
         plt.savefig(save_path, format='pdf', bbox_inches='tight')
 
     plt.show() 
+    
+source_dataset_path = "datasets/trend.parquet" 
+target_dataset_path = "datasets/sine.parquet" 
+input_sample_path = None # "datasets/trend.parquet" 
+input_sample_index=0
+model_type="moment"
+method="mean"
+num_samples=20
+alpha=1.0
+beta=None
+second_target_dataset_path=None
+output_dir="results"
+device="cpu"
+
+results = run_angular_experiment(source_dataset_path, target_dataset_path, input_sample_path, input_sample_index,
+                        model_type, method, num_samples, alpha, beta, second_target_dataset_path,
+                        output_dir, device)
+#print(results[0])
+#steering_vector = results["steering_vector"]
+
+
