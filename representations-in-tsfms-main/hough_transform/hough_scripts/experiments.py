@@ -1,10 +1,12 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import torch
 import seaborn as sns
 import os
 import logging
 from pathlib import Path
+
 
 from .moment import perturb_activations_MOMENT, get_activations_MOMENT
 from .chronos import perturb_activations_Chronos, get_activations_Chronos, predict_Chronos
@@ -166,7 +168,8 @@ def run_angular_experiment(
     beta=None,
     second_target_dataset_path=None,
     output_dir="results",
-    device="cpu"
+    device="cpu",
+    visualise=False
 ):
     """
     Run a steering experiment
@@ -212,99 +215,48 @@ def run_angular_experiment(
     
     source_activations = extract_activations(source_dataset_path, model_type, num_samples, device)
     target_activations = extract_activations(target_dataset_path, model_type, num_samples, device)
-    print(source_activations.shape)
     
     if input_sample_path == None:
         steering_vector = get_steering_matrix(source_activations, target_activations, method=method)
-        steering_vector = np.mean(steering_vector, axis=1)
+        steering_vector = torch.Tensor(steering_vector).mean(dim=1)
         
     else:
-        input_dataset = pd.read_parquet(input_sample_path)
-        input_sample = get_sample_from_dataset(input_dataset, input_sample_index)
-        input_sample_expanded = input_sample[np.newaxis, ...]  # shape: (1, 24, 64, 1024)
-        # Bring sample dimension to front in activations: (20, 24, 64, 1024)
-        source_samples = source_activations.transpose(1, 0, 2, 3)
-        target_samples = target_activations.transpose(1, 0, 2, 3)
-        # Raw difference vectors (no reduction)
-        source_differences = source_samples - input_sample_expanded  # shape: (20, 24, 64, 1024)
-        target_differences = target_samples - input_sample_expanded  
-        steering_vector = np.concatenate([source_differences, target_differences], axis=0) # shape: (40, 24
-        steering_vector = steering_vector.transpose(1, 0, 2, 3)    
-        steering_vector = np.mean(steering_vector, axis=2)
+        input_sample = extract_activations(input_sample_path, model_type, num_samples=1 )
+        source_differences = torch.Tensor(source_activations - input_sample)
+        target_differences = torch.Tensor(target_activations - input_sample)
+        steering_vector = torch.cat([source_differences, target_differences], dim=1) 
+        steering_vector = steering_vector.mean(dim=2) 
     
     output_prefix = f"{source_name}_to_{target_name}_{method}_alpha_{alpha}"
-    
-    
-    '''if model_type.lower() == "moment":
-        non_perturbed_output = perturb_activations_MOMENT(input_sample, device=device)
-        perturbed_output = perturb_activations_MOMENT(
-            input_sample, 
-            perturbation_fn=add, 
-            perturbation_payload=alpha * steering_vector,
-            device=device
-        )
-        non_perturbed_output = non_perturbed_output.flatten()
-        perturbed_output = perturbed_output.flatten()
-    
-    elif model_type.lower() == "chronos":
-        input_sample_np = input_sample.squeeze(1).cpu().numpy()
-        non_perturbed_output = predict_Chronos(
-            input_sample_np, 
-            prediction_length=64,
-            device=device
-        )
-        
-        perturbed_output = perturb_activations_Chronos(
-            input_sample_np[:,np.newaxis,:],
-            prediction_length=64,
-            device=device,
-            perturbation_fn=add,
-            perturbation_payload=alpha * steering_vector
-        )
-        
-        non_perturbed_output = non_perturbed_output.cpu().numpy().flatten()
-        perturbed_output = perturbed_output.cpu().numpy().flatten()
-    
-    else:
-        raise ValueError(f"Unsupported model type: {model_type}")
-    
-    plot_path = os.path.join(output_dir, f"{output_prefix}.pdf")
-    plot_imputed_signals_with_smoothing(non_perturbed_output, perturbed_output, save_path=plot_path)'''
     
     no_layers = source_activations.shape[0]
     layers_to_visualize = [0, no_layers//2, no_layers-1]
     
     angular_vectors = [] #np.zeros((no_layers,))
     for layer in layers_to_visualize:
-        steering_vector_1 = steering_vector.copy()[layer]
-        angular_vectors.append(cartesian_to_hyperspherical(steering_vector_1))
+        steering_vector_1 = steering_vector[layer]
+        angular_vectors.append(cartesian_to_hyperspherical(steering_vector_1.clone().transpose(0,1)))
         
-        pca_path = os.path.join(output_dir, f"{output_prefix}_pca_layer_{layer}.pdf")
-        visualize_embeddings_pca(
-            source_activations,
-            target_activations,
-            layer,
-            title=f"Layer {layer} - PCA Visualization",
-            output_file=pca_path
-        )
-        
-        lda_path = os.path.join(output_dir, f"{output_prefix}_lda_layer_{layer}.pdf")
-        visualize_embeddings_lda(
-            source_activations,
-            target_activations,
-            layer,
-            title=f"Layer {layer} - LDA Visualization",
-            output_file=lda_path
-        )
+        if visualise == True:
+            pca_path = os.path.join(output_dir, f"{output_prefix}_pca_layer_{layer}.pdf")
+            visualize_embeddings_pca(
+                source_activations,
+                target_activations,
+                layer,
+                title=f"Layer {layer} - PCA Visualization",
+                output_file=pca_path
+            )
+            
+            lda_path = os.path.join(output_dir, f"{output_prefix}_lda_layer_{layer}.pdf")
+            visualize_embeddings_lda(
+                source_activations,
+                target_activations,
+                layer,
+                title=f"Layer {layer} - LDA Visualization",
+                output_file=lda_path
+            )
     
-    '''results = {
-        "non_perturbed_output": non_perturbed_output,
-        "perturbed_output": perturbed_output,
-        "plot_path": plot_path,
-        "steering_vector": steering_vector
-    }'''
-    
-    return angular_vectors
+    return np.array(angular_vectors)
 
 
 
@@ -354,7 +306,7 @@ def plot_imputed_signals_with_smoothing(imputed_normal, imputed_perturbed, windo
     
 source_dataset_path = "datasets/trend.parquet" 
 target_dataset_path = "datasets/sine.parquet" 
-input_sample_path = None # "datasets/trend.parquet" 
+input_sample_path =  "datasets/trend.parquet" 
 input_sample_index=0
 model_type="moment"
 method="mean"
@@ -365,10 +317,39 @@ second_target_dataset_path=None
 output_dir="results"
 device="cpu"
 
-results = run_angular_experiment(source_dataset_path, target_dataset_path, input_sample_path, input_sample_index,
+angular_coordinates = run_angular_experiment(source_dataset_path, target_dataset_path, input_sample_path, input_sample_index,
                         model_type, method, num_samples, alpha, beta, second_target_dataset_path,
                         output_dir, device)
-#print(results[0])
-#steering_vector = results["steering_vector"]
 
+print(angular_coordinates.shape)
+
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.metrics import pairwise_distances
+
+def plot_pairwise_distance_histogram(data, bins=30, title="Pairwise Distance Histogram"):
+    """
+    Plots a histogram of pairwise Euclidean distances between samples.
+
+    Parameters:
+    - data (np.ndarray): shape (features, samples) → will be transposed to (samples, features)
+    - bins (int): number of bins in histogram
+    - title (str): title of the plot
+    """
+    if data.shape[0] > data.shape[1]:
+        data = data.T  # Ensure shape is (samples, features)
+    
+    dists = pairwise_distances(data)  # shape: (n_samples, n_samples)
+    dists_flat = dists[np.triu_indices_from(dists, k=1)]  # exclude self-distances
+
+    plt.figure(figsize=(8, 5))
+    plt.hist(dists_flat, bins=bins, color='skyblue', edgecolor='black')
+    plt.title(title)
+    plt.xlabel("Distance")
+    plt.ylabel("Frequency")
+    plt.grid(True)
+    plt.savefig("distances", bbox_inches="tight")
+    plt.show()
+    
+plot_pairwise_distance_histogram(angular_coordinates[2])
 
