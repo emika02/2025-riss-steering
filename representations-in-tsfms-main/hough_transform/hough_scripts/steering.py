@@ -19,7 +19,7 @@ def compute_lda_steering_vector(one_data, other_data):
     return lda_direction
 
 
-def get_steering_matrix(one_activations, other_activations, method="median", n_jobs=-1):
+def get_steering_matrix_and_middle_point(one_activations, other_activations, method="median", n_jobs=-1):
     """
     Get the steering matrix from one_activations to other_activations.
     Parallelized for 'lda' method, with progress tracking.
@@ -30,13 +30,15 @@ def get_steering_matrix(one_activations, other_activations, method="median", n_j
         one_median = np.median(one_activations, axis=1)
         other_median = np.median(other_activations, axis=1)
         steering_matrix = other_median - one_median
+        middle_point = one_median + 0.5 * steering_matrix
 
     elif method == "mean":
         one_mean = np.mean(one_activations, axis=1)
         other_mean = np.mean(other_activations, axis=1)
         steering_matrix = other_mean - one_mean
+        middle_point = one_median + 0.5 * steering_matrix
 
-    elif method == "lda":
+    elif method == "lda": #middle point not implemented
         steering_matrix = np.zeros((layer, patch, features))
 
         def compute_for_patch(l, p):
@@ -53,4 +55,4 @@ def get_steering_matrix(one_activations, other_activations, method="median", n_j
         for l, p, lda_vector in results:
             steering_matrix[l, p, :] = lda_vector
 
-    return steering_matrix
+    return steering_matrix, middle_point 

@@ -11,7 +11,7 @@ from pathlib import Path
 from .moment import perturb_activations_MOMENT, get_activations_MOMENT
 from .chronos import perturb_activations_Chronos, get_activations_Chronos, predict_Chronos
 from .perturb import add
-from .steering import get_steering_matrix
+from .steering import get_steering_matrix_and_middle_point
 from .utils import load_dataset, get_sample_from_dataset
 from .separability import compute_and_plot_separability, visualize_embeddings_pca, visualize_embeddings_lda
 
@@ -154,6 +154,19 @@ def extract_activations(dataset_path, model_type="moment", num_samples=20, devic
     
     else:
         raise ValueError(f"Unsupported model type: {model_type}")
+    
+
+import numpy as np
+def inspect_diff_magnitude(activations):
+    layers = activations.shape[0]
+    for layer in range(layers):
+        ref = activations[layer, 0]
+        cmp = activations[layer, 1]
+        abs_diff = np.abs(ref - cmp)
+        mean_diff = abs_diff.mean()
+        max_diff = abs_diff.max()
+        print(f"Layer {layer}: Mean diff = {mean_diff:.2e}, Max diff = {max_diff:.2e}")
+
 
 
 def run_angular_experiment(
@@ -215,6 +228,9 @@ def run_angular_experiment(
     
     source_activations = extract_activations(source_dataset_path, model_type, num_samples, device)
     target_activations = extract_activations(target_dataset_path, model_type, num_samples, device)
+    #inspect_diff_magnitude(source_activations)
+    steering_vector, middle_point = get_steering_matrix_and_middle_point(source_activations, target_activations, method=method)
+
     
     if input_sample_path == None:
         steering_vector = get_steering_matrix(source_activations, target_activations, method=method)
@@ -323,33 +339,52 @@ angular_coordinates = run_angular_experiment(source_dataset_path, target_dataset
 
 print(angular_coordinates.shape)
 
+
 import numpy as np
 import matplotlib.pyplot as plt
-from sklearn.metrics import pairwise_distances
+from sklearn.metrics.pairwise import cosine_similarity
 
-def plot_pairwise_distance_histogram(data, bins=30, title="Pairwise Distance Histogram"):
+def plot_angular_distance_from_random_point(data, bins=10, title="Angular Distance from Random Point"):
     """
-    Plots a histogram of pairwise Euclidean distances between samples.
+    Plots a histogram of angular distances between a randomly selected sample and all other samples on a unit n-sphere.
 
     Parameters:
     - data (np.ndarray): shape (features, samples) → will be transposed to (samples, features)
     - bins (int): number of bins in histogram
     - title (str): title of the plot
     """
-    if data.shape[0] > data.shape[1]:
-        data = data.T  # Ensure shape is (samples, features)
+    data = data.T  # Ensure shape is (samples, features)
     
-    dists = pairwise_distances(data)  # shape: (n_samples, n_samples)
-    dists_flat = dists[np.triu_indices_from(dists, k=1)]  # exclude self-distances
+    # Normalize data to unit vectors
+    #norms = np.linalg.norm(data, axis=1, keepdims=True)
+    unit_data = data #/ norms
 
+    # Choose a random reference sample
+    n_samples = unit_data.shape[0]
+    ref_idx = np.random.randint(n_samples)
+    ref_idx = 1
+    ref_vector = unit_data[ref_idx].reshape(1, -1)  # Shape: (1, features)
+
+    # Compute cosine similarity between reference and all others
+    cos_sim = cosine_similarity(ref_vector, unit_data).flatten()
+    cos_sim = np.clip(cos_sim, -1.0, 1.0)  # Clip for numerical stability
+
+    # Convert to angular distances
+    ang_dists = np.arccos(cos_sim)
+    
+    # Exclude self-distance (which is zero)
+    ang_dists = np.delete(ang_dists, ref_idx)
+
+    # Plot histogram
+    print(len(ang_dists))
     plt.figure(figsize=(8, 5))
-    plt.hist(dists_flat, bins=bins, color='skyblue', edgecolor='black')
+    plt.hist(ang_dists, bins=bins, color='lightcoral', edgecolor='black')
     plt.title(title)
-    plt.xlabel("Distance")
+    plt.xlabel("Angular Distance (radians)")
     plt.ylabel("Frequency")
     plt.grid(True)
-    plt.savefig("distances", bbox_inches="tight")
+    plt.savefig(title, bbox_inches="tight")
     plt.show()
-    
-plot_pairwise_distance_histogram(angular_coordinates[2])
 
+plot_angular_distance_from_random_point(angular_coordinates[2,:,:19], title="trend1")
+plot_angular_distance_from_random_point(angular_coordinates[2,:,19:], title="sine1")

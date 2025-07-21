@@ -230,7 +230,7 @@ def generate_trend_sine_sum_datasets(n_series=512, length=512, output_dir="datas
             trend_type="linear",
             seasonality_type=None,
             noise_type=None,
-            trend_params={"slope": np.random.uniform(0.5, 1), "intercept": 0}, #(0.05,0.1)
+            trend_params={"slope": np.random.uniform(0.5, 0.5), "intercept": 0}, #(0.05,0.1)
         )
         trend = trend_gen.generate_trend()
 
@@ -241,7 +241,7 @@ def generate_trend_sine_sum_datasets(n_series=512, length=512, output_dir="datas
             seasonality_type="sine",
             noise_type=None,
             seasonality_params={
-                "amplitude": np.random.uniform(45, 50), #(25,27)
+                "amplitude": np.random.uniform(50, 50), #(25,27)
                 "period": np.random.uniform(64,64), #(128,128)
             },
         )
@@ -295,6 +295,9 @@ trend_df = pd.read_parquet("datasets/trend.parquet")
 sine_df = pd.read_parquet("datasets/sine.parquet")
 sum_df = pd.read_parquet("datasets/trend_plus_sine.parquet")
 exp_df = pd.read_parquet("datasets/exp.parquet")
+
+trend_df.describe()
+sine_df.describe()
 
 # Extract first time series (each row contains a full series as a list/array)
 trend_series = pd.Series(trend_df.iloc[0, 0])
