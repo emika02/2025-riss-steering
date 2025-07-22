@@ -17,61 +17,6 @@ from .separability import compute_and_plot_separability, visualize_embeddings_pc
 
 
 
-def ab_to_r_theta(a_vals, b_vals):
-    """
-    Convert lines in slope-intercept form (y = a*x + b)
-    to Hough space parameters (r, theta).
-
-    Parameters:
-        a_vals: array-like of slopes (a)
-        b_vals: array-like of intercepts (b)
-
-    Returns:
-        r: ndarray of distances from origin
-        theta: ndarray of angles (in radians) of normal vector
-    """
-    a_vals = np.asarray(a_vals, dtype=float)
-    b_vals = np.asarray(b_vals, dtype=float)
-
-    # Handle vertical lines (infinite slope)
-    vertical_mask = np.isinf(a_vals)
-    theta = np.empty_like(a_vals)
-    r = np.empty_like(b_vals)
-
-    # General case: a is finite
-    finite_mask = ~vertical_mask
-    theta[finite_mask] = np.arctan(-1 / a_vals[finite_mask])
-    r[finite_mask] = b_vals[finite_mask] * np.sin(theta[finite_mask])
-
-    # Special case: vertical lines → θ = 0, r = x-intercept
-    theta[vertical_mask] = 0.0
-    r[vertical_mask] = b_vals[vertical_mask]  # interpret b as x-intercept here
-
-    return r, theta
-
-def vector_point_to_ab(v, p):
-    """
-    Given a 2D direction vector v = (vx, vy)
-    and a point p = (px, py), compute the line y = ax + b
-
-    Returns:
-        a: slope (or np.inf for vertical line)
-        b: intercept (ignored if vertical)
-    """
-    vx, vy = v
-    px, py = p
-
-    if vx == 0:
-        a = np.inf
-        b = px  # x-intercept
-    else:
-        a = vy / vx
-        b = py - a * px
-
-    return a, b
-
-
-
 def cartesian_to_hyperspherical(vectors):
     """
     Convert a batch of Cartesian vectors to hyperspherical coordinates.
@@ -101,7 +46,7 @@ def cartesian_to_hyperspherical(vectors):
 
             # Denominator = norm of vec[:n-i]
             denominator = np.linalg.norm(vectors[:, :idx + 1], axis=1)
-            val = np.clip(numerator / denominator, -1.0, 1.0)
+            val = np.clip(numerator / denominator, -1.0, 1.0) #why is clipping needed?
             angle = np.arccos(val)
         else:
             # Final angle: arctan2(x2, x1)
@@ -110,6 +55,18 @@ def cartesian_to_hyperspherical(vectors):
         angles[:, i] = angle
 
     return angles  # shape: (num_samples, dim - 1)
+
+def cartesian_to_hyperspherical2(vector): #for 1 sample for now 
+    vector = vector.detach().cpu().numpy()
+    r = np.linalg.norm(vector)
+    dim = len(vector)
+    angles = np.zeros(dim - 1)
+    for i in range(dim - 1):
+        if vector[i:].any() != 0: 
+            angles[i] = np.arctan2(np.linalg.norm(vector[(i+1):]), vector[i])
+        else: 
+            angles[i] == 0 
+    return r, angles
 
 def extract_activations(dataset_path, model_type="moment", num_samples=20, device="cpu"):
     """
@@ -155,31 +112,37 @@ def extract_activations(dataset_path, model_type="moment", num_samples=20, devic
     else:
         raise ValueError(f"Unsupported model type: {model_type}")
     
-
-import numpy as np
-def inspect_diff_magnitude(activations):
-    layers = activations.shape[0]
-    for layer in range(layers):
-        ref = activations[layer, 0]
-        cmp = activations[layer, 1]
-        abs_diff = np.abs(ref - cmp)
-        mean_diff = abs_diff.mean()
-        max_diff = abs_diff.max()
-        print(f"Layer {layer}: Mean diff = {mean_diff:.2e}, Max diff = {max_diff:.2e}")
+def calculate_angular(middle_point, source_activations, target_activations):
+    middle_point = middle_point[:, np.newaxis, :, :] #shape (layers,1,...,...)
+    source_differences = torch.Tensor(source_activations - middle_point)
+    target_differences = torch.Tensor(target_activations - middle_point)
+    source_differences = source_differences.mean(dim=2) #mean across patches
+    target_differences = target_differences.mean(dim=2)
+    source_mean = source_differences[23,:,:50].mean(dim=0)#mean across samples
+    target_mean = target_differences[23,:,:50].mean(dim=0)
+    print("source_shape:", source_mean.mean())
+    print("target:", target_mean.mean())
+    r_source, source_ang = cartesian_to_hyperspherical2(source_mean)
+    r_target, target_ang = cartesian_to_hyperspherical2( target_mean)
+    print("source:", source_ang.mean())
+    print("target:", target_ang.mean())
+    print("source_r:", r_source)
+    print("target_r:", r_target)
+    diff = source_ang - target_ang
+    print("diff:", diff.mean())
+    return source_differences, target_differences
 
 
 
 def run_angular_experiment(
     source_dataset_path, 
     target_dataset_path,
-    input_sample_path=None,
-    input_sample_index=0,
+    next_dataset_path,
+    multiple=True,
     model_type="moment",
     method="mean",
     num_samples=20,
     alpha=1.0,
-    beta=None,
-    second_target_dataset_path=None,
     output_dir="results",
     device="cpu",
     visualise=False
@@ -228,20 +191,22 @@ def run_angular_experiment(
     
     source_activations = extract_activations(source_dataset_path, model_type, num_samples, device)
     target_activations = extract_activations(target_dataset_path, model_type, num_samples, device)
+    next_activations = extract_activations(next_dataset_path, model_type, num_samples, device)
     #inspect_diff_magnitude(source_activations)
     steering_vector, middle_point = get_steering_matrix_and_middle_point(source_activations, target_activations, method=method)
+    steering_vector1, middle_point1 = get_steering_matrix_and_middle_point(source_activations, next_activations, method=method)
+    steering_vector2, middle_point2 = get_steering_matrix_and_middle_point(next_activations, target_activations, method=method)
+
 
     
-    if input_sample_path == None:
-        steering_vector = get_steering_matrix(source_activations, target_activations, method=method)
+    if multiple == False:
         steering_vector = torch.Tensor(steering_vector).mean(dim=1)
         
     else:
-        input_sample = extract_activations(input_sample_path, model_type, num_samples=1 )
-        source_differences = torch.Tensor(source_activations - input_sample)
-        target_differences = torch.Tensor(target_activations - input_sample)
+        source_differences, target_differences = calculate_angular(middle_point, source_activations, target_activations)
+        source_differenes1, target_differences1 = calculate_angular(middle_point1, source_activations, next_activations)
+        source_differenes2, target_differences2 = calculate_angular(middle_point2, next_activations, target_activations)
         steering_vector = torch.cat([source_differences, target_differences], dim=1) 
-        steering_vector = steering_vector.mean(dim=2) 
     
     output_prefix = f"{source_name}_to_{target_name}_{method}_alpha_{alpha}"
     
@@ -322,20 +287,17 @@ def plot_imputed_signals_with_smoothing(imputed_normal, imputed_perturbed, windo
     
 source_dataset_path = "datasets/trend.parquet" 
 target_dataset_path = "datasets/sine.parquet" 
-input_sample_path =  "datasets/trend.parquet" 
-input_sample_index=0
+next_dataset_path = "datasets/exp.parquet" 
+multiple = True
 model_type="moment"
 method="mean"
 num_samples=20
 alpha=1.0
-beta=None
-second_target_dataset_path=None
 output_dir="results"
 device="cpu"
 
-angular_coordinates = run_angular_experiment(source_dataset_path, target_dataset_path, input_sample_path, input_sample_index,
-                        model_type, method, num_samples, alpha, beta, second_target_dataset_path,
-                        output_dir, device)
+angular_coordinates = run_angular_experiment(source_dataset_path, target_dataset_path, next_dataset_path, multiple,
+                        model_type, method, num_samples, alpha, output_dir, device)
 
 print(angular_coordinates.shape)
 
@@ -344,7 +306,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.metrics.pairwise import cosine_similarity
 
-def plot_angular_distance_from_random_point(data, bins=10, title="Angular Distance from Random Point"):
+def plot_angular_distance_from_random_point(data, bins=25, title="Angular Distance from Random Point"):
     """
     Plots a histogram of angular distances between a randomly selected sample and all other samples on a unit n-sphere.
 
@@ -388,3 +350,4 @@ def plot_angular_distance_from_random_point(data, bins=10, title="Angular Distan
 
 plot_angular_distance_from_random_point(angular_coordinates[2,:,:19], title="trend1")
 plot_angular_distance_from_random_point(angular_coordinates[2,:,19:], title="sine1")
+plot_angular_distance_from_random_point(angular_coordinates[2,:,:], title="all")

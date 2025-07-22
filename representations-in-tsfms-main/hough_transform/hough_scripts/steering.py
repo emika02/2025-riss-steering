@@ -36,7 +36,7 @@ def get_steering_matrix_and_middle_point(one_activations, other_activations, met
         one_mean = np.mean(one_activations, axis=1)
         other_mean = np.mean(other_activations, axis=1)
         steering_matrix = other_mean - one_mean
-        middle_point = one_median + 0.5 * steering_matrix
+        middle_point = one_mean + 0.5 * steering_matrix
 
     elif method == "lda": #middle point not implemented
         steering_matrix = np.zeros((layer, patch, features))
