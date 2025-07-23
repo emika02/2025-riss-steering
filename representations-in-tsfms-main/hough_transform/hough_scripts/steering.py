@@ -56,3 +56,20 @@ def get_steering_matrix_and_middle_point(one_activations, other_activations, met
             steering_matrix[l, p, :] = lda_vector
 
     return steering_matrix, middle_point 
+
+def get_middle_point(one_activations, other_activations, next_activations, method="median", n_jobs=-1):
+
+
+    if method == "median":
+        one_median = np.median(one_activations, axis=1)
+        other_median = np.median(other_activations, axis=1)
+        next_median = np.median(next_activations, axis=1)
+        middle_point = (one_median + other_median + next_median)/3
+
+    elif method == "mean":
+        one_mean = np.mean(one_activations, axis=1)
+        other_mean = np.mean(other_activations, axis=1)
+        next_mean = np.mean(next_activations, axis=1)
+        middle_point = (one_mean + other_mean + next_mean)/3
+
+    return  middle_point 

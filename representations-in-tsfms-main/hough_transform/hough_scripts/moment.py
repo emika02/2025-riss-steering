@@ -140,6 +140,7 @@ def get_activations_MOMENT(dataset, device="cpu"):
     )
     model.init()
     model.to(device)
+    print("model.training:", model.training)
     
     all_activations = []
     
