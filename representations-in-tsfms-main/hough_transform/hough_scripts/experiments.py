@@ -6,6 +6,11 @@ import seaborn as sns
 import os
 import logging
 from pathlib import Path
+from momentfm import MOMENTPipeline
+import scipy
+from sklearn.metrics.pairwise import cosine_similarity
+from scipy.stats import kurtosis, skew
+from sklearn.decomposition import PCA
 
 
 from .moment import perturb_activations_MOMENT, get_activations_MOMENT
@@ -13,21 +18,13 @@ from .chronos import perturb_activations_Chronos, get_activations_Chronos, predi
 from .perturb import add
 from .steering import get_steering_matrix_and_middle_point, get_middle_point
 from .utils import load_dataset, get_sample_from_dataset
+from .separability import embeddings_pca, embeddings_lda
 from .separability import compute_and_plot_separability, visualize_embeddings_pca, visualize_embeddings_lda
+from .angular import cartesian_to_hyperspherical, cartesian_to_hyperspherical_batched, save_signal_plots
+from .angular import hyperspherical_to_cartesian, hyperspherical_to_cartesian_batched, keep_top_n_diff, keep_top_n_diff_batched
+from .angular import inject_custom_final_activations, reconstruct_signals_from_n_coord
+from .angular_plots import plot_3d_clusters, plot_angles_histogram, plot_scatter, plot_vector
 
-
-def cartesian_to_hyperspherical2(vector): #for 1 sample for now 
-    vector = vector.detach().cpu().numpy()
-    r = np.linalg.norm(vector)
-    vector = vector / r #normalization
-    dim = len(vector)
-    angles = np.zeros(dim - 1)
-    for i in range(dim - 1):
-        if vector[i:].any() != 0: 
-            angles[i] = np.arctan2(np.linalg.norm(vector[(i+1):]), vector[i])
-        else: 
-            angles[i] == 0 
-    return r, angles
 
 def extract_activations(dataset_path, model_type="moment", num_samples=20, device="cpu"):
     """
@@ -56,7 +53,48 @@ def extract_activations(dataset_path, model_type="moment", num_samples=20, devic
     if dataset.shape[0] > num_samples:
         logging.info(f"Limiting dataset from {dataset.shape[0]} to {num_samples} samples")
         dataset = dataset[:num_samples]
-    
+        
+    from itertools import combinations
+
+    def check_time_series_difference_torch(data: torch.Tensor, threshold: float, metric='l2'):
+        """
+        Checks if any pair of time series in the tensor differs more than the threshold.
+        
+        Args:
+            data (torch.Tensor): shape (samples, time_points)
+            threshold (float): difference threshold
+            metric (str): distance metric ('l2' or 'abs')
+
+        Returns:
+            bool: True if any pair differs more than the threshold, False otherwise.
+            list: List of (i, j) index pairs that exceeded the threshold.
+        """
+        data = data.squeeze(1)
+        
+        if data.dim() != 2:
+            raise ValueError("Input tensor must be 2D (samples, time_points)")
+
+        exceeding_pairs = []
+        num_samples = data.shape[0]
+
+        for i, j in combinations(range(num_samples), 2):
+            x, y = data[i], data[j]
+            if metric == 'l2':
+                dist = torch.norm(x - y, p=2).item()
+            elif metric == 'abs':
+                dist = torch.max(torch.abs(x - y)).item()
+            else:
+                raise ValueError("Unsupported metric. Use 'l2' or 'abs'.")
+            
+            if dist > threshold:
+                exceeding_pairs.append((i, j))
+
+        return len(exceeding_pairs) > 0, exceeding_pairs
+
+    '''differs, pairs = check_time_series_difference_torch(dataset, threshold=500, metric='l2')
+    print("Any pair differs?", differs)
+    print("Pairs that differ:", pairs)'''
+            
     if model_type.lower() == "moment":
         activations = get_activations_MOMENT(dataset, device=device)
         activations = activations.cpu().numpy() if device != "cpu" else activations.numpy()
@@ -73,26 +111,6 @@ def extract_activations(dataset_path, model_type="moment", num_samples=20, devic
     else:
         raise ValueError(f"Unsupported model type: {model_type}")
     
-#can be ignored now
-def calculate_angular(middle_point, source_activations, target_activations):
-    middle_point = middle_point[:, np.newaxis, :, :] #shape (layers,1,...,...)
-    source_differences = torch.Tensor(source_activations - middle_point)
-    target_differences = torch.Tensor(target_activations - middle_point)
-    source_differences = source_differences.mean(dim=2) #mean across patches
-    target_differences = target_differences.mean(dim=2)
-    source_mean = source_differences[23,:,:50].mean(dim=0)#mean across samples
-    target_mean = target_differences[23,:,:50].mean(dim=0)
-    print("source_shape:", source_mean.mean())
-    print("target:", target_mean.mean())
-    r_source, source_ang = cartesian_to_hyperspherical2(source_mean)
-    r_target, target_ang = cartesian_to_hyperspherical2( target_mean)
-    print("source:", source_ang.mean())
-    print("target:", target_ang.mean())
-    print("source_r:", r_source)
-    print("target_r:", r_target)
-    diff = source_ang - target_ang
-    print("diff:", diff.mean())
-    return source_differences, target_differences
 
 
 #angular experiment for 3 clusters
@@ -130,106 +148,20 @@ def run_angular_experiment(
     else:
         
         middle_point = middle_point[:, np.newaxis, :, :] #shape (layers,1,...,...)
-        source_differences = torch.Tensor(source_activations - middle_point)
-        target_differences = torch.Tensor(target_activations - middle_point)
-        next_differences = torch.Tensor(next_activations - middle_point)
-        source_differences = source_differences.mean(dim=2) #mean across patches
-        target_differences = target_differences.mean(dim=2)
-        next_differences = next_differences.mean(dim=2)
-        source_mean = source_differences[23,:,:].mean(dim=0)#mean across samples
-        target_mean = target_differences[23,:,:].mean(dim=0)
-        next_mean = next_differences[23,:,:].mean(dim=0)
-        print("source:", source_mean.mean())
-        print("target:", target_mean.mean())
-        print("next:", next_mean.mean())
-        r_source, source_ang = cartesian_to_hyperspherical2(source_mean)
-        r_target, target_ang = cartesian_to_hyperspherical2( target_mean)
-        r_next, next_ang = cartesian_to_hyperspherical2(next_mean)
-        print("source_ang:", source_ang.mean())
-        print("target_ang:", target_ang.mean())
-        print("next_ang:", next_ang.mean())
-        print("source_r:", r_source)
-        print("target_r:", r_target)
-        print("next_r:", r_next)
-    '''
-    steering_vector = torch.cat([source_differences, target_differences], dim=1) 
+        source_differences = source_activations - middle_point
+        target_differences = target_activations - middle_point
+        next_differences = next_activations - middle_point
     
-    output_prefix = f"{source_name}_to_{target_name}_{method}_alpha_{alpha}"
+    #source_differences = source_differences[23, :, :, :].mean(axis=1).mean(axis=0) #layer 23, mean across samples and patches
+    #source_reduced, target_reduced, next_reduced = embeddings_lda(source_differences, target_differences, next_differences)
+    rec_source = reconstruct_signals_from_n_coord(source_differences, device=device, n=200)
+    rec_target = reconstruct_signals_from_n_coord(target_differences, device=device, n=200)
+    rec_next = reconstruct_signals_from_n_coord(next_differences, device=device, n=200)
     
-    no_layers = source_activations.shape[0]
-    layers_to_visualize = [0, no_layers//2, no_layers-1]
+    save_signal_plots(rec_source, rec_target, rec_next)
     
-    angular_vectors = [] #np.zeros((no_layers,))
-    for layer in layers_to_visualize:
-        steering_vector_1 = steering_vector[layer]
-        angular_vectors.append(cartesian_to_hyperspherical(steering_vector_1.clone().transpose(0,1)))
-        
-        if visualise == True:
-            pca_path = os.path.join(output_dir, f"{output_prefix}_pca_layer_{layer}.pdf")
-            visualize_embeddings_pca(
-                source_activations,
-                target_activations,
-                layer,
-                title=f"Layer {layer} - PCA Visualization",
-                output_file=pca_path
-            )
-            
-            lda_path = os.path.join(output_dir, f"{output_prefix}_lda_layer_{layer}.pdf")
-            visualize_embeddings_lda(
-                source_activations,
-                target_activations,
-                layer,
-                title=f"Layer {layer} - LDA Visualization",
-                output_file=lda_path
-            )
-    
-    return np.array(angular_vectors)'''
+    #return ang_source, ang_target, ang_next,  source_reduced, target_reduced, next_reduced
 
-
-
-def plot_imputed_signals_with_smoothing(imputed_normal, imputed_perturbed, window_size=10, save_path=None):
-    """
-    Plot imputed signals (normal and perturbed) for time series data with smoothing.
-    Show non-smoothed series in pale colors and smoothed series in bold colors.
-    
-    Parameters:
-    - imputed_normal: The normal imputed signal (numpy array).
-    - imputed_perturbed: The perturbed imputed signal (numpy array).
-    - window_size: The window size for the moving average smoothing.
-    - save_path: If provided, saves the plot to this path as PDF.
-    """
-    palette = sns.color_palette()
-    imputed_normal_smoothed = pd.Series(imputed_normal).rolling(window=window_size, center=True).mean()
-    imputed_perturbed_smoothed = pd.Series(imputed_perturbed).rolling(window=window_size, center=True).mean()
-
-    sns.set(font_scale=2.0, style="ticks")
-    plt.style.use('seaborn-v0_8-whitegrid')
-
-    plt.rc('font', family='serif')
-
-    fig, ax = plt.subplots(figsize=(12, 6))
-
-    ax.plot(imputed_perturbed, label='Perturbed', color=palette[0], alpha=0.6, linewidth=2)
-    ax.plot(imputed_normal, label='Non-Perturbed', color=palette[1], alpha=0.6, linewidth=2)
-
-    ax.plot(imputed_perturbed_smoothed, label='Perturbed (Smoothed)', color=palette[0], linewidth=3)
-    ax.plot(imputed_normal_smoothed, label='Non-Perturbed (Smoothed)', color=palette[1], linewidth=3)
-
-    ax.set_xlabel("Timestep", fontsize=20)
-
-    ax.legend(loc='best', fontsize=20)
-
-    handles, labels = ax.get_legend_handles_labels()
-    labels = [label.replace(' (Smoothed)', '') for label in labels]
-    handles = [handles[2], handles[3]]
-    ax.legend(handles, labels, loc='best', fontsize=20, frameon=True)
-    
-    plt.tight_layout(pad=2)
-
-    if save_path:
-        plt.savefig(save_path, format='pdf', bbox_inches='tight')
-
-    plt.show() 
     
 source_dataset_path = "datasets/trend.parquet" 
 target_dataset_path = "datasets/sine.parquet" 
@@ -242,7 +174,12 @@ alpha=1.0
 output_dir="results"
 device="cpu"
 
-run_angular_experiment(source_dataset_path, target_dataset_path, next_dataset_path, multiple,
-                        model_type, method, num_samples, alpha, output_dir, device)
+ang_source, ang_target, ang_next, source_reduced, target_reduced, next_reduced = run_angular_experiment(source_dataset_path, target_dataset_path, next_dataset_path, multiple,
+                        model_type, method, num_samples, alpha, output_dir, device, visualise=True)
 
 
+      
+#plot_3d_clusters(source_reduced, target_reduced, next_reduced)      
+#plot_angles_histogram(ang_source, ang_target, ang_next)
+#plot_scatter(source_ang, target_ang, next_ang)
+    

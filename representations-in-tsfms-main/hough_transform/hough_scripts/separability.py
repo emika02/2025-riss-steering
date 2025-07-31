@@ -121,8 +121,9 @@ def plot_linear_separability(
 def visualize_embeddings_pca(
     one_activations,
     other_activations,
+    next_activations,
     coordinates,
-    title="Layer Embeddings - PCA with Shifted Samples",
+    title="Layer Embeddings - PCA",
     output_file="embedding_visualization.pdf",
 ):
     """
@@ -142,47 +143,108 @@ def visualize_embeddings_pca(
         layer_to_visualize, patch = coordinates
         one_patch_embeddings = one_activations[layer_to_visualize, :, patch, :]
         other_patch_embeddings = other_activations[layer_to_visualize, :, patch, :]
+        next_patch_embeddings = next_activations[layer_to_visualize, :, patch, :]
         
     else:
         layer_to_visualize = coordinates
         one_patch_embeddings = np.mean(one_activations[layer_to_visualize, :, :, :], axis=1)
         other_patch_embeddings = np.mean(other_activations[layer_to_visualize, :, :, :], axis=1)
+        next_patch_embeddings = np.mean(next_activations[layer_to_visualize, :, :, :], axis=1)
 
+    
+    combined = np.concatenate([one_patch_embeddings, other_patch_embeddings, next_patch_embeddings], axis=0)
     pca = PCA(n_components=2)
-    one_reduced = pca.fit_transform(one_patch_embeddings)
-    other_reduced = pca.transform(other_patch_embeddings)
+    combined_reduced = pca.fit_transform(combined)
+    
+    n_source = one_patch_embeddings.shape[0]
+    n_target = other_patch_embeddings.shape[0]
+   # n_pre_added = next_patch_embeddings.shape[0]
 
+    idx1 = n_source
+    idx2 = idx1 + n_target
+
+    source_reduced = combined_reduced[:idx1]
+    target_reduced = combined_reduced[idx1:idx2]
+    next_reduced = combined_reduced[idx2:]
+
+
+    # Plot
     sns.set(font_scale=2.0, style="ticks")
     plt.style.use("seaborn-v0_8-whitegrid")
     plt.rcParams["font.family"] = "serif"
 
-    fig, ax1 = plt.subplots(figsize=(12, 10))
+    fig, ax = plt.subplots(figsize=(12, 10))
+    ax.scatter(source_reduced[:, 0], source_reduced[:, 1], c="blue", label="Trends", alpha=0.6)
+    ax.scatter(target_reduced[:, 0], target_reduced[:, 1], c="red", label="Sines", alpha=0.6)
+    ax.scatter(next_reduced[:, 0], next_reduced[:, 1], c="green", label="Exponentials", alpha=0.6)
+    #ax.scatter(post_added_reduced[:, 0], post_added_reduced[:, 1], c="purple", label="Post-added", alpha=0.6)
+    #ax.scatter(ref_reduced[:, 0], ref_reduced[:, 1], c="cyan", label="Reference", alpha=0.6)
 
-    ax1.scatter(
-        one_reduced[:, 0],
-        one_reduced[:, 1],
-        c="blue",
-        label="Class 0",
-        alpha=0.6,
-    )
-    ax1.scatter(
-        other_reduced[:, 0],
-        other_reduced[:, 1],
-        c="red",
-        label="Class 1",
-        alpha=0.6,
-    )
+    
+    ax.set_title(title, fontsize=24, pad=30)
+    ax.set_xlabel("Principal Component 1", fontsize=22, labelpad=20)
+    ax.set_ylabel("Principal Component 2", fontsize=22, labelpad=20)
+    ax.legend(loc="best", fontsize=18)
+    ax.grid(True)
 
-    ax1.set_title(title, fontsize=24, pad=30)
-    ax1.set_xlabel("Principal Component 1", fontsize=22, labelpad=20)
-    ax1.set_ylabel("Principal Component 2", fontsize=22, labelpad=20)
-    ax1.legend(loc="best", fontsize=18)
-    ax1.grid(True)
 
     plt.tight_layout()
     plt.savefig(output_file, bbox_inches="tight")
     plt.show()
     print(f"Embedding visualization saved as {output_file}")
+    return source_reduced, target_reduced, next_reduced
+
+
+def embeddings_pca(
+    one_activations,
+    other_activations,
+    next_activations,
+    coordinates=23,
+    n=3,
+):
+    """
+    Visualize the embeddings in a selected layer and patch after applying PCA 
+    and highlight separability between sine and none samples.
+
+    Parameters:
+    sine_constant_activations: numpy array, activations for sine_constant input
+    none_constant_activations: numpy array, activations for none_constant input
+    layer_to_visualize: int, the layer index to visualize
+    patch: int, patch index to visualize
+    title: str, the title for the plot
+    output_file: str, the file name to save the plot
+    """
+    
+    if isinstance(coordinates, tuple):
+        layer_to_visualize, patch = coordinates
+        one_patch_embeddings = one_activations[layer_to_visualize, :, patch, :]
+        other_patch_embeddings = other_activations[layer_to_visualize, :, patch, :]
+        next_patch_embeddings = next_activations[layer_to_visualize, :, patch, :]
+        
+    else:
+        layer_to_visualize = coordinates
+        one_patch_embeddings = np.mean(one_activations[layer_to_visualize, :, :, :], axis=1)
+        other_patch_embeddings = np.mean(other_activations[layer_to_visualize, :, :, :], axis=1)
+        next_patch_embeddings = np.mean(next_activations[layer_to_visualize, :, :, :], axis=1)
+
+    
+    combined = np.concatenate([one_patch_embeddings, other_patch_embeddings, next_patch_embeddings], axis=0)
+    pca = PCA(n_components=n)
+    combined_reduced = pca.fit_transform(combined)
+    
+    n_source = one_patch_embeddings.shape[0]
+    n_target = other_patch_embeddings.shape[0]
+   # n_pre_added = next_patch_embeddings.shape[0]
+
+    idx1 = n_source
+    idx2 = idx1 + n_target
+
+    source_reduced = combined_reduced[:idx1]
+    target_reduced = combined_reduced[idx1:idx2]
+    next_reduced = combined_reduced[idx2:]
+    
+    return source_reduced, target_reduced, next_reduced
+
     
 def visualize_embeddings_lda(
     one_activations,
@@ -256,7 +318,89 @@ def visualize_embeddings_lda(
     plt.savefig(output_file, bbox_inches="tight")
     plt.show()
     print(f"Embedding visualization saved as {output_file}")
+    
+def embeddings_lda(
+    one_activations,
+    other_activations,
+    pre_added_activations,
+    coordinates=23,
+    title="Layer Embeddings - LDA with Shifted Samples",
+    output_file="embedding_visualization_lda_1d.pdf"
+):
+    """
+    Visualize the embeddings in a selected layer and patch after applying LDA 
+    and highlight separability between two classes (Class 0 and Class 1).
+    This version reduces the embeddings to one dimension.
 
+    Parameters:
+    one_activations: numpy array, activations for Class 0 input
+    other_activations: numpy array, activations for Class 1 input
+    coordinates: tuple or int, layer and patch indices or just layer index for visualization
+    title: str, the title for the plot
+    output_file: str, the file name to save the plot
+    """
+    
+    # Extract embeddings based on the provided coordinates
+    if isinstance(coordinates, tuple):
+        layer_to_visualize, patch = coordinates
+        one_patch_embeddings = one_activations[layer_to_visualize, :, patch, :]
+        other_patch_embeddings = other_activations[layer_to_visualize, :, patch, :]
+        pre_added_patch_embeddings = pre_added_activations[layer_to_visualize, :, patch, :]
+        
+    else:
+        layer_to_visualize = coordinates
+        one_patch_embeddings = np.mean(one_activations[layer_to_visualize, :, :, :], axis=1)
+        other_patch_embeddings = np.mean(other_activations[layer_to_visualize, :, :, :], axis=1)
+        pre_added_patch_embeddings = np.mean(pre_added_activations[layer_to_visualize, :, :, :], axis=1) 
+
+        
+
+    labels = np.concatenate([
+    np.zeros(one_patch_embeddings.shape[0]),
+    np.ones(other_patch_embeddings.shape[0]),
+    np.full(pre_added_patch_embeddings.shape[0], 2)
+    ])    
+    
+    combined_embeddings = np.vstack([
+    one_patch_embeddings,
+    other_patch_embeddings,
+    pre_added_patch_embeddings
+    ])
+    
+    lda = LinearDiscriminantAnalysis(n_components=2)
+    reduced_embeddings = lda.fit_transform(combined_embeddings, labels)
+    
+    n0 = one_patch_embeddings.shape[0]
+    n1 = other_patch_embeddings.shape[0]
+    one_reduced = reduced_embeddings[:n0]
+    other_reduced = reduced_embeddings[n0:n0 + n1]
+    pre_added_reduced = reduced_embeddings[n0 + n1:]
+    
+
+    sns.set(font_scale=2.0, style="ticks")
+    plt.style.use("seaborn-v0_8-whitegrid")
+    plt.rcParams["font.family"] = "serif"
+
+    print("lda", one_reduced.shape)
+    fig, ax = plt.subplots(figsize=(12, 6))
+    ax.scatter(one_reduced[:, 0], one_reduced[:, 1], c="blue", label="Trends", alpha=0.6)
+    ax.scatter(other_reduced[:, 0], other_reduced[:, 1], c="red", label="Sines", alpha=0.6)
+    ax.scatter(pre_added_reduced[:, 0], pre_added_reduced[:, 1], c="green", label="Exponentials", alpha=0.6)
+
+    
+    ax.set_title(title, fontsize=24, pad=30)
+    ax.set_xlabel("LDA Component 1", fontsize=20)
+    ax.set_ylabel("LDA Component 2", fontsize=20)
+    ax.legend(loc="best", fontsize=16)
+    ax.grid(True)
+    
+    plt.tight_layout()
+    plt.savefig(output_file, bbox_inches="tight")
+    plt.show()
+    print(f"Embedding visualization saved as {output_file}")
+    
+    return one_reduced, other_reduced, pre_added_reduced
+   
 
 def compute_and_plot_separability(
     one_activations,

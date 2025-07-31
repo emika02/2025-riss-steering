@@ -139,8 +139,9 @@ def get_activations_MOMENT(dataset, device="cpu"):
         model_kwargs={"task_name": "reconstruction", "device": device},
     )
     model.init()
+    model.eval()
     model.to(device)
-    print("model.training:", model.training)
+    #print("model.training:", model.training)
     
     all_activations = []
     

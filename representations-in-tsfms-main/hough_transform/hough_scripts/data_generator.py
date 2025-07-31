@@ -230,7 +230,7 @@ def generate_trend_sine_sum_datasets(n_series=512, length=512, output_dir="datas
             trend_type="linear",
             seasonality_type=None,
             noise_type=None,
-            trend_params={"slope": np.random.uniform(0.5, 0.5), "intercept": 0}, #(0.05,0.1)
+            trend_params={"slope": np.random.uniform(-1, 1), "intercept": 0}, #(0.05,0.1)
         )
         trend = trend_gen.generate_trend()
 
@@ -241,7 +241,7 @@ def generate_trend_sine_sum_datasets(n_series=512, length=512, output_dir="datas
             seasonality_type="sine",
             noise_type=None,
             seasonality_params={
-                "amplitude": np.random.uniform(50, 50), #(25,27)
+                "amplitude": np.random.uniform(50, 100), #(25,27)
                 "period": np.random.uniform(64,64), #(128,128)
             },
         )
@@ -253,7 +253,7 @@ def generate_trend_sine_sum_datasets(n_series=512, length=512, output_dir="datas
             seasonality_type=None,
             noise_type=None,
             trend_params={
-                "growth_rate": np.random.uniform(0.01, 0.015), #(25,27)
+                "growth_rate": np.random.uniform(0.01, 0.01000001), #(25,27)
             },
         )
         exp = exp_gen.generate_trend()
