@@ -166,7 +166,7 @@ def hyperspherical_to_cartesian_batched(radii: torch.Tensor, angles: torch.Tenso
 
 
 
-def keep_top_n_diff_batched(vecs: torch.Tensor, n: int = 50) -> torch.Tensor:
+def keep_top_n_diff_batched(vecs: torch.Tensor, n: int = 50, cut=True) -> torch.Tensor:
     """
     For each row (sample) in a 2D tensor, keep n entries with the largest
     absolute difference from the row mean. Set all others to pi/2.
@@ -174,6 +174,7 @@ def keep_top_n_diff_batched(vecs: torch.Tensor, n: int = 50) -> torch.Tensor:
     Args:
         vecs: torch.Tensor of shape (batch_size, dim)
         n: number of coordinates to preserve per row
+        cut: if True, only consider the first 800 elements for top-n search
 
     Returns:
         torch.Tensor of same shape, with only top-n values kept per row
@@ -189,7 +190,17 @@ def keep_top_n_diff_batched(vecs: torch.Tensor, n: int = 50) -> torch.Tensor:
     mean = vecs.mean(dim=1, keepdim=True)               # (batch_size, 1)
     abs_diff = (vecs - mean).abs()                      # (batch_size, dim)
 
-    top_n_indices = abs_diff.topk(k=n, dim=1).indices   # (batch_size, n)
+    if cut:
+        # Top-k in first 800 dimensions
+        if dim < 800:
+            raise ValueError("Input vector must have at least 800 dimensions for cut=True")
+        top_n_indices = abs_diff[:, :].topk(k=n, dim=1).indices  # (batch_size, n)
+    else:
+        top_n_indices = abs_diff.topk(k=n, dim=1).indices
+
+    # Adjust indices if cut is True
+    if cut:
+        top_n_indices += 0  # since slicing started at 0, no offset needed
 
     result = torch.full_like(vecs, fill_value=np.pi / 2)
     result.scatter_(1, top_n_indices, vecs.gather(1, top_n_indices))
@@ -198,7 +209,7 @@ def keep_top_n_diff_batched(vecs: torch.Tensor, n: int = 50) -> torch.Tensor:
 
 
 
-def keep_top_n_diff(vec, n=50):
+def keep_top_n_diff(vec, n=50, cut=True):
     """
     Keep n entries in vec with largest absolute difference from the mean,
     and set all others to pi/2.
@@ -217,7 +228,8 @@ def keep_top_n_diff(vec, n=50):
     diff = np.abs(vec - mean_val)
     
     # Get indices of top-n differences
-    top_n_indices = np.argpartition(-diff, n)[:n]
+    if cut == True: top_n_indices = np.argpartition(-diff[:800], n)[:n]
+    else: top_n_indices = np.argpartition(-diff, n)[:n]
     
     # Create output vector
     result = np.full_like(vec, fill_value=np.pi / 2)
@@ -300,14 +312,14 @@ def inject_custom_final_activations(
     return outputs.reconstruction.detach().cpu().numpy()
 
 
-def reconstruct_signals_from_n_coord(differences, device, n=20, layer=23, sample_ind=0):
+def reconstruct_signals_from_n_coord(differences, device, n=20, layer=23, sample_ind=0, cut=True):
     
     if isinstance(differences, np.ndarray): 
         differences = torch.Tensor(differences)
     differences = differences[layer, sample_ind,:,:]
     
     r, ang = cartesian_to_hyperspherical_batched(differences) 
-    rec_source = hyperspherical_to_cartesian_batched(r, keep_top_n_diff_batched(ang, n=n))  
+    rec_source = hyperspherical_to_cartesian_batched(r, keep_top_n_diff_batched(ang, n=n, cut=cut))  
     rec_source = rec_source.unsqueeze(0)  # Add batch dimension
     rec_source = inject_custom_final_activations(rec_source, device=device)
     

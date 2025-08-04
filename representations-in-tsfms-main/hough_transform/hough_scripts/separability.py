@@ -122,7 +122,7 @@ def visualize_embeddings_pca(
     one_activations,
     other_activations,
     next_activations,
-    coordinates,
+    coordinates=23,
     title="Layer Embeddings - PCA",
     output_file="embedding_visualization.pdf",
 ):

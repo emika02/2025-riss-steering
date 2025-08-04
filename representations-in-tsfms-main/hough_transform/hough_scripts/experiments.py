@@ -23,7 +23,7 @@ from .separability import compute_and_plot_separability, visualize_embeddings_pc
 from .angular import cartesian_to_hyperspherical, cartesian_to_hyperspherical_batched, save_signal_plots
 from .angular import hyperspherical_to_cartesian, hyperspherical_to_cartesian_batched, keep_top_n_diff, keep_top_n_diff_batched
 from .angular import inject_custom_final_activations, reconstruct_signals_from_n_coord
-from .angular_plots import plot_3d_clusters, plot_angles_histogram, plot_scatter, plot_vector
+from .angular_plots import plot_3d_clusters, plot_angles_histogram, plot_scatter, plot_vector, plot_angles_2d
 
 
 def extract_activations(dataset_path, model_type="moment", num_samples=20, device="cpu"):
@@ -152,15 +152,16 @@ def run_angular_experiment(
         target_differences = target_activations - middle_point
         next_differences = next_activations - middle_point
     
-    #source_differences = source_differences[23, :, :, :].mean(axis=1).mean(axis=0) #layer 23, mean across samples and patches
-    #source_reduced, target_reduced, next_reduced = embeddings_lda(source_differences, target_differences, next_differences)
-    rec_source = reconstruct_signals_from_n_coord(source_differences, device=device, n=200)
-    rec_target = reconstruct_signals_from_n_coord(target_differences, device=device, n=200)
-    rec_next = reconstruct_signals_from_n_coord(next_differences, device=device, n=200)
-    
+    #source_reduced, target_reduced, next_reduced = embeddings_pca(source_differences, target_differences, next_differences, n=3)
+    rec_source = reconstruct_signals_from_n_coord(source_differences, device=device, n=20, cut=True)
+    rec_target = reconstruct_signals_from_n_coord(target_differences, device=device, n=20, cut=True)
+    rec_next = reconstruct_signals_from_n_coord(next_differences, device=device, n=20, cut=True)
     save_signal_plots(rec_source, rec_target, rec_next)
+    '''r_source, ang_source = cartesian_to_hyperspherical_batched(source_reduced)
+    r_target, ang_target = cartesian_to_hyperspherical_batched(target_reduced)
+    r_next, ang_next = cartesian_to_hyperspherical_batched(next_reduced)
     
-    #return ang_source, ang_target, ang_next,  source_reduced, target_reduced, next_reduced
+    return ang_source, ang_target, ang_next,  source_reduced, target_reduced, next_reduced'''
 
     
 source_dataset_path = "datasets/trend.parquet" 
@@ -169,7 +170,7 @@ next_dataset_path = "datasets/exp.parquet"
 multiple = True
 model_type="moment"
 method="mean"
-num_samples=20
+num_samples=50
 alpha=1.0
 output_dir="results"
 device="cpu"
@@ -177,9 +178,33 @@ device="cpu"
 ang_source, ang_target, ang_next, source_reduced, target_reduced, next_reduced = run_angular_experiment(source_dataset_path, target_dataset_path, next_dataset_path, multiple,
                         model_type, method, num_samples, alpha, output_dir, device, visualise=True)
 
+# Plot
+'''sns.set(font_scale=2.0, style="ticks")
+plt.style.use("seaborn-v0_8-whitegrid")
+plt.rcParams["font.family"] = "serif"
+
+fig, ax = plt.subplots(figsize=(12, 10))
+print(source_reduced.shape)
+ax.scatter(source_reduced[:, 0], source_reduced[:, 1], c="blue", label="Trends", alpha=0.6)
+ax.scatter(target_reduced[:, 0], target_reduced[:, 1], c="red", label="Sines", alpha=0.6)
+ax.scatter(next_reduced[:, 0], next_reduced[:, 1], c="green", label="Exponentials", alpha=0.6)
+#ax.scatter(post_added_reduced[:, 0], post_added_reduced[:, 1], c="purple", label="Post-added", alpha=0.6)
+#ax.scatter(ref_reduced[:, 0], ref_reduced[:, 1], c="cyan", label="Reference", alpha=0.6)
+
+
+ax.set_title("PCA", fontsize=24, pad=30)
+ax.set_xlabel("Principal Component 1", fontsize=22, labelpad=20)
+ax.set_ylabel("Principal Component 2", fontsize=22, labelpad=20)
+ax.legend(loc="best", fontsize=18)
+ax.grid(True)
+
+
+plt.tight_layout()
+plt.savefig("/zfsauton2/home/ekaczmar/representations-in-tsfms-main/representations-in-tsfms-main/hough_transform/vector_plots/pca.png", bbox_inches="tight")
+plt.show()'''
 
       
-#plot_3d_clusters(source_reduced, target_reduced, next_reduced)      
+plot_3d_clusters(source_reduced, target_reduced, next_reduced)      
 #plot_angles_histogram(ang_source, ang_target, ang_next)
-#plot_scatter(source_ang, target_ang, next_ang)
+plot_angles_2d(ang_source, ang_target, ang_next)
     
