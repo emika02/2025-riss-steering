@@ -230,7 +230,7 @@ def generate_trend_sine_sum_datasets(n_series=512, length=512, output_dir="datas
             trend_type="linear",
             seasonality_type=None,
             noise_type=None,
-            trend_params={"slope": np.random.uniform(0, 3), "intercept": 0}, #(0.05,0.1)
+            trend_params={"slope": np.random.uniform(0, 2), "intercept": 0}, #(0.05,0.1)
         )
         trend = trend_gen.generate_trend()
 
@@ -296,9 +296,6 @@ sine_df = pd.read_parquet("datasets/sine.parquet")
 sum_df = pd.read_parquet("datasets/trend_plus_sine.parquet")
 exp_df = pd.read_parquet("datasets/exp.parquet")
 
-trend_df.describe()
-sine_df.describe()
-
 # Extract first time series (each row contains a full series as a list/array)
 trend_series = pd.Series(trend_df.iloc[0, 0])
 sine_series = pd.Series(sine_df.iloc[0, 0])
@@ -309,13 +306,14 @@ exp_series = pd.Series(exp_df.iloc[0, 0])
 plt.figure(figsize=(12, 6))
 trend_series.plot(label="Trend")
 sine_series.plot(label="Sine")
-sum_series.plot(label="Trend + Sine")
-exp_series.plot(label="exp")
+exp_series.plot(label="Exp")
 
-plt.title("Example Time Series from Each Dataset")
-plt.xlabel("Timestep")
-plt.ylabel("Value")
-plt.legend()
+# Increase font sizes 2×
+plt.title("Example Time Series from Each Dataset", fontsize=24)     # default ~12
+plt.xlabel("Timestep", fontsize=20)                                 # default ~10
+plt.ylabel("Value", fontsize=20)
+plt.legend(fontsize=16)                                             # default ~8-10
+
 plt.grid(True)
 plt.tight_layout()
 

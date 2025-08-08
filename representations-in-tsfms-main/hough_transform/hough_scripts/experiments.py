@@ -151,17 +151,24 @@ def run_angular_experiment(
         source_differences = source_activations - middle_point
         target_differences = target_activations - middle_point
         next_differences = next_activations - middle_point
-    
-    #source_reduced, target_reduced, next_reduced = embeddings_pca(source_differences, target_differences, next_differences, n=3)
-    rec_source = reconstruct_signals_from_n_coord(source_differences, device=device, n=20, cut=True)
-    rec_target = reconstruct_signals_from_n_coord(target_differences, device=device, n=20, cut=True)
-    rec_next = reconstruct_signals_from_n_coord(next_differences, device=device, n=20, cut=True)
+        
+    '''source_differences = source_differences[23, :, :, :].mean(axis=1).mean(axis=0)
+    target_differences = target_differences[23, :, :, :].mean(axis=1).mean(axis=0)
+    next_differences = next_differences[23, :, :, :].mean(axis=1).mean(axis=0)
+    trends = cartesian_to_hyperspherical(source_differences)[1]
+    sines = cartesian_to_hyperspherical(target_differences)[1]
+    exps = cartesian_to_hyperspherical(next_differences)[1]
+    plot_scatter(trends, sines, exps)'''
+    #source_reduced, target_reduced, next_reduced = embeddings_pca(source_differences, target_differences, next_differences, n=2)
+    rec_source = reconstruct_signals_from_n_coord(source_differences, device=device, n=1023, cut=True)
+    rec_target = reconstruct_signals_from_n_coord(target_differences, device=device, n=1023, cut=True)
+    rec_next = reconstruct_signals_from_n_coord(next_differences, device=device, n=1023, cut=True)
     save_signal_plots(rec_source, rec_target, rec_next)
     '''r_source, ang_source = cartesian_to_hyperspherical_batched(source_reduced)
     r_target, ang_target = cartesian_to_hyperspherical_batched(target_reduced)
-    r_next, ang_next = cartesian_to_hyperspherical_batched(next_reduced)
+    r_next, ang_next = cartesian_to_hyperspherical_batched(next_reduced)'''
     
-    return ang_source, ang_target, ang_next,  source_reduced, target_reduced, next_reduced'''
+    return  source_reduced, target_reduced, next_reduced
 
     
 source_dataset_path = "datasets/trend.parquet" 
@@ -170,41 +177,78 @@ next_dataset_path = "datasets/exp.parquet"
 multiple = True
 model_type="moment"
 method="mean"
-num_samples=50
+num_samples=10
 alpha=1.0
 output_dir="results"
 device="cpu"
 
-ang_source, ang_target, ang_next, source_reduced, target_reduced, next_reduced = run_angular_experiment(source_dataset_path, target_dataset_path, next_dataset_path, multiple,
+source_reduced, target_reduced, next_reduced = run_angular_experiment(source_dataset_path, target_dataset_path, next_dataset_path, multiple,
                         model_type, method, num_samples, alpha, output_dir, device, visualise=True)
 
-# Plot
-'''sns.set(font_scale=2.0, style="ticks")
+import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+# Set plotting style
+sns.set(font_scale=2.5, style="ticks")  # Increase font sizes globally
 plt.style.use("seaborn-v0_8-whitegrid")
 plt.rcParams["font.family"] = "serif"
 
+# Compute medians
+trend_median = np.median(source_reduced, axis=0)
+sine_median = np.median(target_reduced, axis=0)
+exp_median = np.median(next_reduced, axis=0)
+
+# Compute angles (in radians) relative to x-axis
+def compute_angle(vec):
+    return np.arctan2(vec[1], vec[0])  # returns signed angle in radians
+
+angle_trend = compute_angle(trend_median)
+angle_sine = compute_angle(sine_median)
+angle_exp = compute_angle(exp_median)
+
+# Print angles to console in order
+print(f"Trend angle (radians): {angle_trend:+.4f}")
+print(f"Sine angle  (radians): {angle_sine:+.4f}")
+print(f"Exp angle   (radians): {angle_exp:+.4f}")
+
+# Create plot
 fig, ax = plt.subplots(figsize=(12, 10))
-print(source_reduced.shape)
 ax.scatter(source_reduced[:, 0], source_reduced[:, 1], c="blue", label="Trends", alpha=0.6)
 ax.scatter(target_reduced[:, 0], target_reduced[:, 1], c="red", label="Sines", alpha=0.6)
 ax.scatter(next_reduced[:, 0], next_reduced[:, 1], c="green", label="Exponentials", alpha=0.6)
-#ax.scatter(post_added_reduced[:, 0], post_added_reduced[:, 1], c="purple", label="Post-added", alpha=0.6)
-#ax.scatter(ref_reduced[:, 0], ref_reduced[:, 1], c="cyan", label="Reference", alpha=0.6)
 
+# Add median markers
+ax.scatter(*trend_median[:2], c="blue", s=250, marker="X", edgecolor="black", label="Trend Median")
+ax.scatter(*sine_median[:2], c="red", s=250, marker="X", edgecolor="black", label="Sine Median")
+ax.scatter(*exp_median[:2], c="green", s=250, marker="X", edgecolor="black", label="Exp Median")
 
-ax.set_title("PCA", fontsize=24, pad=30)
-ax.set_xlabel("Principal Component 1", fontsize=22, labelpad=20)
-ax.set_ylabel("Principal Component 2", fontsize=22, labelpad=20)
-ax.legend(loc="best", fontsize=18)
+# Draw bold arrows from (0,0) to medians
+ax.arrow(0, 0, trend_median[0], trend_median[1], color="blue", width=0.05, head_width=0.4, length_includes_head=True)
+ax.arrow(0, 0, sine_median[0], sine_median[1], color="red", width=0.05, head_width=0.4, length_includes_head=True)
+ax.arrow(0, 0, exp_median[0], exp_median[1], color="green", width=0.05, head_width=0.4, length_includes_head=True)
+
+# Add horizontal line
+ax.axhline(0, color="black", linestyle="--", linewidth=1)
+
+# Set titles and labels (2x size)
+ax.set_title("PCA", fontsize=30, pad=30)
+ax.set_xlabel("Principal Component 1", fontsize=26, labelpad=20)
+ax.set_ylabel("Principal Component 2", fontsize=26, labelpad=20)
+ax.legend(loc="best", fontsize=22)
 ax.grid(True)
 
-
+# Save and show
 plt.tight_layout()
 plt.savefig("/zfsauton2/home/ekaczmar/representations-in-tsfms-main/representations-in-tsfms-main/hough_transform/vector_plots/pca.png", bbox_inches="tight")
-plt.show()'''
+plt.show()
+
+
+
+
 
       
-plot_3d_clusters(source_reduced, target_reduced, next_reduced)      
+#plot_3d_clusters(source_reduced, target_reduced, next_reduced)      
 #plot_angles_histogram(ang_source, ang_target, ang_next)
-plot_angles_2d(ang_source, ang_target, ang_next)
+#plot_angles_2d(ang_source, ang_target, ang_next)
     

@@ -13,7 +13,6 @@ def plot_3d_clusters(source_reduced, target_reduced, next_reduced):
         source_reduced (np.ndarray): Array of shape (N, 3)
         target_reduced (np.ndarray): Array of shape (N, 3)
         next_reduced (np.ndarray): Array of shape (N, 3)
-        save_path (str): Optional path to save the figure.
     """
     fig = plt.figure(figsize=(10, 8))
     ax = fig.add_subplot(111, projection='3d')
@@ -28,17 +27,15 @@ def plot_3d_clusters(source_reduced, target_reduced, next_reduced):
     ax.scatter(next_reduced[:, 0], next_reduced[:, 1], next_reduced[:, 2], 
                label="exponentials", c='red', alpha=0.7)
 
-    # Labels
-    ax.set_title("3D Clusters: Trends, Sines, Exponentials")
-    ax.set_xlabel("X")
-    ax.set_ylabel("Y")
-    ax.set_zlabel("Z")
-    ax.legend()
+    # Labels (with doubled font size)
+    ax.set_title("3D Clusters: Trends, Sines, Exponentials", fontsize=24)
+    ax.set_xlabel("X", fontsize=20)
+    ax.set_ylabel("Y", fontsize=20)
+    ax.set_zlabel("Z", fontsize=20)
+    ax.legend(fontsize=18)
 
-    # Show or save
-    
+    # Save figure
     plt.savefig("/zfsauton2/home/ekaczmar/representations-in-tsfms-main/representations-in-tsfms-main/hough_transform/vector_plots/3d_clusters.png", bbox_inches='tight')
-
     
 def plot_angles_2d(ang_source, ang_target, ang_next):
     sns.set(font_scale=2.0, style="ticks")
@@ -182,8 +179,8 @@ def plot_scatter(vec, vec1, vec2, save_dir="vector_plots", title="Vector Plot"):
 
     def save_scatter(x, y, xlabel, ylabel, filename):
         plt.figure(figsize=(10, 10))
-        scatter = plt.scatter(x, y, c=indices, cmap='viridis', s=20, alpha=0.8)
-        plt.colorbar(scatter, label="Index")
+        scatter = plt.scatter(x, y, alpha=0.8)
+        #plt.colorbar(scatter, label="Index")
         plt.title(title)
         plt.xlabel(xlabel)
         plt.ylabel(ylabel)
@@ -203,13 +200,13 @@ def plot_vector(vec, save_dir="vector_plots", title="Vector Plot"):
     
     plt.figure(figsize=(10, 4))
     plt.plot(vec, marker='.', markersize=2, linewidth=1)
-    plt.title(title)
-    plt.ylim((1.2,2.5))
-    plt.xlabel("Dimension")
-    plt.ylabel("Value")
+    plt.title(title, fontsize=24)
+    plt.ylim((1.2, 2.5))
+    plt.xlabel("Dimension", fontsize=20)
+    plt.ylabel("Value", fontsize=20)
     plt.axhline(y=np.pi/2, color='red', linestyle='-', linewidth=1)
     plt.grid(True)
     
     save_path = os.path.join(save_dir, title + ".png")
-    plt.savefig(save_path)
+    plt.savefig(save_path, bbox_inches='tight')
     plt.close()
