@@ -223,7 +223,7 @@ def visualize_embeddings_pca(
     ax.scatter(source_reduced[:, 0], source_reduced[:, 1], c="blue", label="Source", alpha=0.6)
     ax.scatter(target_reduced[:, 0], target_reduced[:, 1], c="red", label="Target", alpha=0.6)
     ax.scatter(pre_added_reduced[:, 0], pre_added_reduced[:, 1], c="green", label="Pre-added", alpha=0.6)
-    ax.scatter(post_added_reduced[:, 0], post_added_reduced[:, 1], c="purple", label="Post-added", alpha=0.6)
+    #ax.scatter(post_added_reduced[:, 0], post_added_reduced[:, 1], c="purple", label="Post-added", alpha=0.6)
     #ax.scatter(ref_reduced[:, 0], ref_reduced[:, 1], c="cyan", label="Reference", alpha=0.6)
 
     
@@ -233,7 +233,7 @@ def visualize_embeddings_pca(
     ax.legend(loc="best", fontsize=18)
     ax.grid(True)
     
-    for i in range(len(pre_added_reduced)):
+    '''for i in range(len(pre_added_reduced)):
         ax.plot(
             [pre_added_reduced[i, 0], post_added_reduced[i, 0]],
             [pre_added_reduced[i, 1], post_added_reduced[i, 1]],
@@ -241,7 +241,7 @@ def visualize_embeddings_pca(
             linestyle="--",
             linewidth=1,
             alpha=0.6
-        )
+        )'''
 
     plt.tight_layout()
     plt.savefig(output_file, bbox_inches="tight")
@@ -324,7 +324,7 @@ def visualize_embeddings_lda(
         ax.scatter(one_reduced[:, 0], one_reduced[:, 1], c="blue", label="Class 0", alpha=0.6)
         ax.scatter(other_reduced[:, 0], other_reduced[:, 1], c="red", label="Class 1", alpha=0.6)
         ax.scatter(pre_added_reduced[:, 0], pre_added_reduced[:, 1], c="green", label="Pre-added", alpha=0.6)
-        ax.scatter(post_added_reduced[:, 0], post_added_reduced[:, 1], c="purple", label="Post-added", alpha=0.6)
+        #ax.scatter(post_added_reduced[:, 0], post_added_reduced[:, 1], c="purple", label="Post-added", alpha=0.6)
         #ax.scatter(ref_reduced[:, 0], ref_reduced[:, 1], c="cyan", label="Reference", alpha=0.6)
 
         
@@ -334,7 +334,7 @@ def visualize_embeddings_lda(
         ax.legend(loc="best", fontsize=16)
         ax.grid(True)
         
-        for i in range(len(pre_added_reduced)):
+        '''for i in range(len(pre_added_reduced)):
             ax.plot(
                 [pre_added_reduced[i, 0], post_added_reduced[i, 0]],
                 [pre_added_reduced[i, 1], post_added_reduced[i, 1]],
@@ -342,7 +342,7 @@ def visualize_embeddings_lda(
                 linestyle="--",
                 linewidth=1,
                 alpha=0.6
-            )
+            )'''
 
         plt.tight_layout()
         plt.savefig(output_file, bbox_inches="tight")
@@ -377,7 +377,7 @@ def visualize_embeddings_lda(
         ax1.scatter(one_reduced[:, 0], np.zeros_like(one_reduced[:, 0]), c="blue", label="Class 0", alpha=0.6)
         ax1.scatter(other_reduced[:, 0], np.zeros_like(other_reduced[:, 0]), c="red", label="Class 1", alpha=0.6)
         ax1.scatter(reduced_pre_added[:, 0], np.full_like(reduced_pre_added[:, 0], 0.1), c="green", label="Pre-added", alpha=0.6)
-        ax1.scatter(reduced_post_added[:, 0], np.full_like(reduced_post_added[:, 0], -0.1), c="purple", label="Post-added", alpha=0.6)
+        #ax1.scatter(reduced_post_added[:, 0], np.full_like(reduced_post_added[:, 0], -0.1), c="purple", label="Post-added", alpha=0.6)
         #ax1.scatter(ref_reduced[:, 0], np.full_like(ref_reduced[:, 0], -0.1), c="cyan", label="Reference", alpha=0.6)
 
         ax1.set_title(title, fontsize=24, pad=30)
@@ -391,7 +391,7 @@ def visualize_embeddings_lda(
         post_y = -0.1
         
         # Connect each pre-added and post-added point
-        for i in range(len(reduced_pre_added)):
+        '''for i in range(len(reduced_pre_added)):
             ax1.plot(
                 [reduced_pre_added[i, 0], reduced_post_added[i, 0]],
                 [pre_y, post_y],
@@ -399,7 +399,7 @@ def visualize_embeddings_lda(
                 linestyle="--",
                 linewidth=1,
                 alpha=0.6
-            )
+            )'''
 
         
         plt.savefig(output_file, bbox_inches="tight")
@@ -567,3 +567,40 @@ if __name__ == "__main__":
         none_constant_activations,
         prefix="default_model/",
     )
+
+
+def get_steering_matrix(one_activations, other_activations, method="median", n_jobs=-1):
+    """
+    Get the steering matrix from one_activations to other_activations.
+    Parallelized for 'lda' method, with progress tracking.
+    """
+    layer, batch, patch, features = one_activations.shape
+
+    if method == "median":
+        one_median = np.median(one_activations, axis=1)
+        other_median = np.median(other_activations, axis=1)
+        steering_matrix = other_median - one_median
+
+    elif method == "mean":
+        one_mean = np.mean(one_activations, axis=1)
+        other_mean = np.mean(other_activations, axis=1)
+        steering_matrix = other_mean - one_mean
+
+    elif method == "lda":
+        steering_matrix = np.zeros((layer, patch, features))
+
+        def compute_for_patch(l, p):
+            one_data = one_activations[l, :, p, :]
+            other_data = other_activations[l, :, p, :]
+            return l, p, compute_lda_steering_vector(one_data, other_data)
+
+        tasks = [(l, p) for l in range(layer) for p in range(patch)]
+
+        results = Parallel(n_jobs=n_jobs)(
+            delayed(compute_for_patch)(l, p) for l, p in tqdm(tasks, desc="Computing LDA Steering Vectors")
+        )
+
+        for l, p, lda_vector in results:
+            steering_matrix[l, p, :] = lda_vector
+
+    return steering_matrix

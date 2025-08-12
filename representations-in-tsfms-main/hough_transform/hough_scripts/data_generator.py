@@ -222,6 +222,7 @@ def generate_trend_sine_sum_datasets(n_series=512, length=512, output_dir="datas
     sine_series = []
     sum_series = []
     exp_series = []
+    noise_series = []
 
     for _ in range(n_series):
         # Trend generator
@@ -241,7 +242,7 @@ def generate_trend_sine_sum_datasets(n_series=512, length=512, output_dir="datas
             seasonality_type="sine",
             noise_type=None,
             seasonality_params={
-                "amplitude": np.random.uniform(25, 30), #(25,27)
+                "amplitude": np.random.uniform(50, 60), #(25,27)
                 "period": np.random.uniform(128,128), #(128,128)
             },
         )
@@ -256,21 +257,33 @@ def generate_trend_sine_sum_datasets(n_series=512, length=512, output_dir="datas
                 "growth_rate": np.random.uniform(0.01, 0.01000001), #(25,27)
             },
         )
+        
+        noise = TimeSeriesGenerator(
+            length=length,
+            trend_type=None,
+            seasonality_type=None,
+            noise_type="gaussian",
+            noise_params={"mean": 0, "stdev":10000}
+        )
+        
+        noise = noise.generate_noise()
         exp = exp_gen.generate_trend()
 
         # Literal sum of trend and sine
-        added = trend + sine
+        added = noise + sine
 
         trend_series.append(trend)
         sine_series.append(sine)
         sum_series.append(added)
         exp_series.append(exp)
+        noise_series.append(noise)
 
     # Convert to DataFrames
     trend_df = pd.DataFrame({"series": [s for s in trend_series]})
     sine_df = pd.DataFrame({"series": [s for s in sine_series]})
     sum_df = pd.DataFrame({"series": [s for s in sum_series]})
     exp_df = pd.DataFrame({"series": [s for s in exp_series]})
+    noise_df = pd.DataFrame({"series": [s for s in noise_series]})
 
     # Save
     os.makedirs(output_dir, exist_ok=True)
@@ -278,12 +291,13 @@ def generate_trend_sine_sum_datasets(n_series=512, length=512, output_dir="datas
     sine_df.to_parquet(os.path.join(output_dir, "sine.parquet"), index=False)
     sum_df.to_parquet(os.path.join(output_dir, "trend_plus_sine.parquet"), index=False)
     exp_df.to_parquet(os.path.join(output_dir, "exp.parquet"), index=False)
+    noise_df.to_parquet(os.path.join(output_dir, "noise.parquet"), index=False)
 
     print(f"Saved to {output_dir}/[trend|sine|trend_plus_sine].parquet")
 
-    return trend_df, sine_df, sum_df, exp_df
+    return trend_df, sine_df, sum_df, exp_df, noise_df
 
-trend_df, sine_df, sum_df, exp_df = generate_trend_sine_sum_datasets()
+trend_df, sine_df, sum_df, exp_df, noise_df = generate_trend_sine_sum_datasets()
 
 import os
 
@@ -295,18 +309,22 @@ trend_df = pd.read_parquet("datasets/trend.parquet")
 sine_df = pd.read_parquet("datasets/sine.parquet")
 sum_df = pd.read_parquet("datasets/trend_plus_sine.parquet")
 exp_df = pd.read_parquet("datasets/exp.parquet")
+noise_df = pd.read_parquet("datasets/noise.parquet")
 
 # Extract first time series (each row contains a full series as a list/array)
 trend_series = pd.Series(trend_df.iloc[0, 0])
 sine_series = pd.Series(sine_df.iloc[0, 0])
 sum_series = pd.Series(sum_df.iloc[0, 0])
 exp_series = pd.Series(exp_df.iloc[0, 0])
+noise_series = pd.Series(noise_df.iloc[0, 0])
 
 # Plot and save
 plt.figure(figsize=(12, 6))
 trend_series.plot(label="Trend")
 sine_series.plot(label="Sine")
 exp_series.plot(label="Exp")
+noise_series.plot(label="Noise")
+sum_series.plot(label="sum")
 
 # Increase font sizes 2×
 plt.title("Example Time Series from Each Dataset", fontsize=24)     # default ~12

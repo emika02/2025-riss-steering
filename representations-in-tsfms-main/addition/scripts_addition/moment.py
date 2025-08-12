@@ -54,6 +54,7 @@ def perturb_activations_MOMENT(
         model_kwargs={"task_name": "reconstruction", "device": device},
     )
     model.init()
+    model.eval()
     model.to(device)
     
     # Dictionary to store perturbation hooks
@@ -139,6 +140,7 @@ def get_activations_MOMENT(dataset, device="cpu"):
         model_kwargs={"task_name": "reconstruction", "device": device},
     )
     model.init()
+    model.eval()
     model.to(device)
     
     all_activations = []
