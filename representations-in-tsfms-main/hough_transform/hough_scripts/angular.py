@@ -8,6 +8,7 @@ import logging
 from pathlib import Path
 from momentfm import MOMENTPipeline
 import scipy
+from sklearn.decomposition import PCA
 from sklearn.metrics.pairwise import cosine_similarity
 from scipy.stats import kurtosis, skew
 from .moment import create_prediction_mask_MOMENT
@@ -312,7 +313,7 @@ def inject_custom_final_activations(
     return outputs.reconstruction.detach().cpu().numpy()
 
 
-def reconstruct_signals_from_n_coord(differences, device, n=20, layer=23, sample_ind=0, cut=True):
+def reconstruct_signals_from_n_coord(differences, middle_point, device, n=20, layer=23, sample_ind=0, cut=True):
     
     if isinstance(differences, np.ndarray): 
         differences = torch.Tensor(differences)
@@ -321,6 +322,35 @@ def reconstruct_signals_from_n_coord(differences, device, n=20, layer=23, sample
     r, ang = cartesian_to_hyperspherical_batched(differences) 
     rec_source = hyperspherical_to_cartesian_batched(r, keep_top_n_diff_batched(ang, n=n, cut=cut))  
     rec_source = rec_source.unsqueeze(0)  # Add batch dimension
-    rec_source = inject_custom_final_activations(rec_source, device=device)
+    sum = rec_source + middle_point
+    #rec_source = inject_custom_final_activations(rec_source, device=device)
+    rec_source = inject_custom_final_activations(sum[layer,:,:,:], device=device)
     
     return rec_source.flatten()
+
+
+def pca_order(vector, n=None):
+    # vector: (layers, samples, patches, dim)
+    if n==None:
+        n=dim
+    dim = vector.shape[-1]
+
+    # Step 1: Extract last layer & mean over patches -> (samples, dim)
+    last_layer_mean = np.mean(vector[-1, :, :, :], axis=1)  # shape: (samples, dim)
+
+    # Step 2: Fit PCA
+    pca = PCA(n_components=n)
+    pca.fit(last_layer_mean)
+
+    # Step 3: Get rotation matrix, but reverse the order of components
+    rotation = pca.components_[::-1]  # now least variance first, most variance last
+
+    # Step 4: Apply to all layers without changing shape
+    reshaped = vector.reshape(-1, dim)   # (layers*samples*patches, dim)
+    reordered = reshaped @ rotation.T
+    reordered = reordered.reshape(vector.shape)
+
+    return reordered
+
+    
+    

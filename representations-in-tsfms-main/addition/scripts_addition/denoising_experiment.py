@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
+import torch
 import os
 import logging
 from pathlib import Path
@@ -12,7 +13,7 @@ from .chronos import perturb_activations_Chronos, get_activations_Chronos, predi
 #from .steering import get_steering_matrix
 from .utils import load_dataset, get_sample_from_dataset
 from.perturb import add
-from .addition import compute_and_plot_separability, visualize_embeddings_pca, get_steering_matrix, visualize_embeddings_lda
+from .addition import compute_and_plot_separability, visualize_embeddings_pca_denoising, visualize_embeddings_pca, get_steering_matrix, visualize_embeddings_lda
 from .data_generator import generate_trend_sine_sum_datasets
 
 def extract_activations(dataset_path, model_type="moment", num_samples=20, device="cpu"):
@@ -118,11 +119,14 @@ def plot_imputed_signals_with_smoothing(imputed_normal, imputed_normal_org, impu
 
     plt.show() 
 
-def run_addition_experiment(
+def run_denoising_experiment(
     source_dataset_path, 
     target_dataset_path,
-    added_dataset_path,
-    reference_dataset_path,
+    next_dataset_path,
+    noise_dataset_path,
+    source_noise_dataset_path, 
+    target_noise_dataset_path,
+    next_noise_dataset_path,
     model_type="moment",
     num_samples=20,
     output_dir="results",
@@ -163,17 +167,19 @@ def run_addition_experiment(
     
     source_activations = extract_activations(source_dataset_path, model_type, num_samples, device)
     target_activations = extract_activations(target_dataset_path, model_type, num_samples, device)
-    pre_added_activations = extract_activations(added_dataset_path, model_type, num_samples, device)
+    next_activations = extract_activations(next_dataset_path, model_type, num_samples, device)
+    noise_activations = extract_activations(noise_dataset_path, model_type, num_samples, device)
+    source_noise_activations = extract_activations(source_noise_dataset_path, model_type, num_samples, device)
+    target_noise_activations = extract_activations(target_noise_dataset_path, model_type, num_samples, device)
+    next_noise_activations = extract_activations(next_noise_dataset_path, model_type, num_samples, device) 
     
-    ref_activations = extract_activations(reference_dataset_path, model_type, num_samples, device)
-    post_added_activations = source_activations + target_activations 
+    sum_activations = np.concatenate([source_activations, target_activations, next_activations], axis=1)
+    steering_vector = get_steering_matrix( noise_activations, sum_activations, method="median")
     
-    steering_vector = get_steering_matrix( source_activations, target_activations, method="median")
-    
-    input_dataset = pd.read_parquet(source_dataset_path)
+    input_dataset = pd.read_parquet(source_noise_dataset_path)
     input_sample = get_sample_from_dataset(input_dataset, 5)
     
-    input_org_sample = get_sample_from_dataset(pd.read_parquet(target_dataset_path), 5)
+    input_org_sample = get_sample_from_dataset(pd.read_parquet(source_dataset_path), 5)
     
     if model_type.lower() == "moment":
         non_perturbed_output = perturb_activations_MOMENT(input_sample, device=device)
@@ -181,7 +187,7 @@ def run_addition_experiment(
         perturbed_output = perturb_activations_MOMENT(
             input_sample, 
             perturbation_fn=add, 
-            perturbation_payload= 0.5 * steering_vector,
+            perturbation_payload= 0.9 * steering_vector,
             device=device
         )
         non_perturbed_output = non_perturbed_output.flatten()
@@ -219,19 +225,20 @@ def run_addition_experiment(
     
     for layer in layers_to_visualize:
         pca_path = os.path.join(output_dir, f"{output_prefix}_pca_layer_{layer}_fit_group_{fit_group}.pdf")
-        one_reduced, other_reduced, pre_added_reduced, post_added_reduced, ref_reduced = visualize_embeddings_pca(
+        visualize_embeddings_pca_denoising(
             source_activations,
             target_activations,
-            pre_added_activations,
-            post_added_activations,
-            ref_activations,
+            next_activations,
+            noise_activations,
+            source_noise_activations,
+            target_noise_activations,
+            next_noise_activations,
             layer,
             title=f"Layer {layer} - PCA Visualization",
-            output_file=pca_path,
-            fit_group=fit_group
+            output_file=pca_path
         )
         
-        lda_path = os.path.join(output_dir, f"{output_prefix}_lda_layer_{layer}_2d_{two_components}.pdf")
+        '''lda_path = os.path.join(output_dir, f"{output_prefix}_lda_layer_{layer}_2d_{two_components}.pdf")
         one_reduced, other_reduced, pre_added_reduced, post_added_reduced, ref_reduced = visualize_embeddings_lda(
             source_activations,
             target_activations,
@@ -244,22 +251,23 @@ def run_addition_experiment(
             two_components=two_components
         )
     
-    return one_reduced, other_reduced, pre_added_reduced, post_added_reduced, ref_reduced
+    return one_reduced, other_reduced, pre_added_reduced, post_added_reduced, ref_reduced'''
 
 output_dir = "results"
-source_dataset_path = "datasets/sine_noise.parquet"
-target_dataset_path = "datasets/sine.parquet"
-added_dataset_path = "datasets/noise.parquet" 
-reference_dataset_path = "datasets/exp.parquet"
+source_dataset_path = "datasets/noise.parquet" 
+target_dataset_path = "datasets/sine.parquet" 
+next_dataset_path = "datasets/exp.parquet"
+noise_dataset_path = "datasets/noise.parquet"
+trend_noise_dataset_path = "datasets/trend_noise.parquet"
+sine_noise_dataset_path = "datasets/sine_noise.parquet"
+exp_noise_dataset_path = "datasets/exp_noise.parquet"
 
-one_reduced, other_reduced, pre_added_reduced, post_added_reduced, ref_reduced = run_addition_experiment(
-    source_dataset_path, target_dataset_path, added_dataset_path, reference_dataset_path,
+run_denoising_experiment(
+    source_dataset_path, target_dataset_path, next_dataset_path, noise_dataset_path,
+    trend_noise_dataset_path, sine_noise_dataset_path, exp_noise_dataset_path,
     output_dir=output_dir, fit_group=2, two_components=False)
 
-print("one_reduced mean:", one_reduced.mean(axis=0))
-print("other_reduced mean:", other_reduced.mean(axis=0))
-print("pre_added mean:", pre_added_reduced.mean(axis=0))
-print("post_added mean:", post_added_reduced.mean(axis=0))
+
 
 
 

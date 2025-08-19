@@ -99,125 +99,7 @@ class TimeSeriesGenerator:
         return self.data
 
 
-class DiverseTimeSeriesDataset:
-    def __init__(self, config_file):
-        with open(config_file, "r") as file:
-            self.config = yaml.safe_load(file)
-        self.n_series = self.config.get("n_series", 100)
-        self.length = self.config.get("length", 100)
-        self.dataset = pd.DataFrame()
-
-    def generate_diverse_dataset(self):
-        for i in range(self.n_series):
-            trend_type = np.random.choice(self.config["trend_types"])
-            seasonality_type = np.random.choice(self.config["seasonality_types"])
-            noise_type = np.random.choice(self.config["noise_types"])
-
-            trend_params = {
-                "slope": np.random.uniform(*self.config["trend_params"]["slope"]),
-                "intercept": np.random.uniform(
-                    *self.config["trend_params"]["intercept"]
-                ),
-                "growth_rate": np.random.uniform(
-                    *self.config["trend_params"]["growth_rate"]
-                ),
-            }
-
-            seasonality_params = {
-                "amplitude": np.random.uniform(
-                    *self.config["seasonality_params"]["amplitude"]
-                ),
-                "period": np.random.uniform(
-                    *self.config["seasonality_params"]["period"]
-                ),
-            }
-
-            noise_params = {
-                "mean": np.random.uniform(*self.config["noise_params"]["mean"]),
-                "stddev": np.random.uniform(*self.config["noise_params"]["stddev"]),
-                "low": np.random.uniform(*self.config["noise_params"]["low"]),
-                "high": np.random.uniform(*self.config["noise_params"]["high"]),
-            }
-
-            generator = TimeSeriesGenerator(
-                length=self.length,
-                trend_type=trend_type,
-                seasonality_type=seasonality_type,
-                noise_type=noise_type,
-                trend_params=trend_params,
-                seasonality_params=seasonality_params,
-                noise_params=noise_params,
-            )
-
-            series_data = generator.generate_series()
-            reshaped_series = series_data.flatten()
-
-            # Creating a label dictionary for the generated series, passing None if component not present
-            label = {
-                "trend_type": trend_type if generator.trend is not None else "none",
-                "trend_slope": (
-                    trend_params["slope"] if generator.trend is not None else None
-                ),
-                "trend_intercept": (
-                    trend_params["intercept"] if generator.trend is not None else None
-                ),
-                "trend_growth_rate": (
-                    trend_params["growth_rate"] if generator.trend is not None else None
-                ),
-                "seasonality_type": (
-                    seasonality_type if generator.seasonality is not None else "none"
-                ),
-                "seasonality_amplitude": (
-                    seasonality_params["amplitude"]
-                    if generator.seasonality is not None
-                    else None
-                ),
-                "seasonality_period": (
-                    seasonality_params["period"]
-                    if generator.seasonality is not None
-                    else None
-                ),
-                "noise_type": noise_type if generator.noise is not None else "none",
-                "noise_mean": (
-                    noise_params["mean"] if generator.noise is not None else None
-                ),
-                "noise_stddev": (
-                    noise_params["stddev"] if generator.noise is not None else None
-                ),
-                "noise_low": (
-                    noise_params["low"] if generator.noise is not None else None
-                ),
-                "noise_high": (
-                    noise_params["high"] if generator.noise is not None else None
-                ),
-            }
-
-            # Store the reshaped series and the labels
-            series_df = pd.DataFrame({"series": [reshaped_series], **label})
-
-            self.dataset = pd.concat([self.dataset, series_df], ignore_index=True)
-
-        return self.dataset
-
-
-def generate_and_save_dataset(config_file, dataset_name, save_to_datasets=True):
-    diverse_dataset_generator = DiverseTimeSeriesDataset(config_file=config_file)
-    dataset = diverse_dataset_generator.generate_diverse_dataset()
-    (
-        dataset.to_parquet("datasets/" + dataset_name, index=False)
-        if save_to_datasets
-        else None
-    )
-
-    X = np.stack(dataset["series"].values)
-    X_tensor = torch.tensor(X, dtype=torch.float32)
-    logging.debug(f"X_tensor.shape: {X_tensor.shape}")
-    logging.debug(f"dataset.columns: {dataset.columns}")
-    logging.debug(f"dataset.head(): {dataset.head()}")
-
-    return dataset
-
-def generate_trend_sine_sum_datasets(n_series=512, length=512, output_dir="datasets"):
+def generate_trend_sine_sum_datasets(n_series=50, length=512, a=2, b=1, output_dir="datasets"):
     trend_series = []
     sine_series = []
     sum_series = []
@@ -277,6 +159,10 @@ def generate_trend_sine_sum_datasets(n_series=512, length=512, output_dir="datas
         sum_series.append(added)
         exp_series.append(exp)
         noise_series.append(noise)
+        
+        diverse =  trend_series + exp_series + sine_series  #+ noise_series
+        diverse_transformed =  [a * ts + b for ts in diverse]
+        diverse_nl_transformed = [ ts**1.5  for ts in diverse]
 
     # Convert to DataFrames
     trend_df = pd.DataFrame({"series": [s for s in trend_series]})
@@ -284,7 +170,10 @@ def generate_trend_sine_sum_datasets(n_series=512, length=512, output_dir="datas
     sum_df = pd.DataFrame({"series": [s for s in sum_series]})
     exp_df = pd.DataFrame({"series": [s for s in exp_series]})
     noise_df = pd.DataFrame({"series": [s for s in noise_series]})
-
+    diverse_df = pd.DataFrame({"series": [s for s in diverse]})
+    diverse_t_df = pd.DataFrame({"series": [s for s in diverse_transformed]})
+    diverse_nl_t_df = pd.DataFrame({"series": [s for s in diverse_nl_transformed]})
+    
     # Save
     os.makedirs(output_dir, exist_ok=True)
     trend_df.to_parquet(os.path.join(output_dir, "trend.parquet"), index=False)
@@ -292,12 +181,15 @@ def generate_trend_sine_sum_datasets(n_series=512, length=512, output_dir="datas
     sum_df.to_parquet(os.path.join(output_dir, "trend_plus_sine.parquet"), index=False)
     exp_df.to_parquet(os.path.join(output_dir, "exp.parquet"), index=False)
     noise_df.to_parquet(os.path.join(output_dir, "noise.parquet"), index=False)
+    diverse_df.to_parquet(os.path.join(output_dir, "diverse.parquet"), index=False)
+    diverse_t_df.to_parquet(os.path.join(output_dir, "diverse_transformed.parquet"), index=False)
+    diverse_nl_t_df.to_parquet(os.path.join(output_dir, "diverse_nl_transformed.parquet"), index=False)
 
     print(f"Saved to {output_dir}/[trend|sine|trend_plus_sine].parquet")
 
     return trend_df, sine_df, sum_df, exp_df, noise_df
 
-trend_df, sine_df, sum_df, exp_df, noise_df = generate_trend_sine_sum_datasets()
+trend_df, sine_df, sum_df, exp_df, noise_df = generate_trend_sine_sum_datasets(n_series=100)
 
 import os
 
@@ -310,6 +202,10 @@ sine_df = pd.read_parquet("datasets/sine.parquet")
 sum_df = pd.read_parquet("datasets/trend_plus_sine.parquet")
 exp_df = pd.read_parquet("datasets/exp.parquet")
 noise_df = pd.read_parquet("datasets/noise.parquet")
+diverse_df = pd.read_parquet("datasets/diverse.parquet")
+diverse_transformed_df = pd.read_parquet("datasets/diverse_transformed.parquet")
+diverse_nl_transformed_df = pd.read_parquet("datasets/diverse_nl_transformed.parquet")
+
 
 # Extract first time series (each row contains a full series as a list/array)
 trend_series = pd.Series(trend_df.iloc[0, 0])
@@ -318,13 +214,23 @@ sum_series = pd.Series(sum_df.iloc[0, 0])
 exp_series = pd.Series(exp_df.iloc[0, 0])
 noise_series = pd.Series(noise_df.iloc[0, 0])
 
+trend_series = pd.Series(diverse_df.iloc[0, 0])
+exp_series = pd.Series(diverse_df.iloc[100, 0])
+sine_series = pd.Series(diverse_df.iloc[200, 0])
+
+trend_series_t = pd.Series(diverse_nl_transformed_df.iloc[0, 0])
+exp_series_t = pd.Series(diverse_nl_transformed_df.iloc[100, 0])
+sine_series_t = pd.Series(diverse_nl_transformed_df.iloc[200, 0])
+
 # Plot and save
 plt.figure(figsize=(12, 6))
 trend_series.plot(label="Trend")
 sine_series.plot(label="Sine")
 exp_series.plot(label="Exp")
-noise_series.plot(label="Noise")
-sum_series.plot(label="sum")
+trend_series_t.plot(label="Trend t")
+sine_series_t.plot(label="Sine t")
+exp_series_t.plot(label="Exp t")
+
 
 # Increase font sizes 2×
 plt.title("Example Time Series from Each Dataset", fontsize=24)     # default ~12

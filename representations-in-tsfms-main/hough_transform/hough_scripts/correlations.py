@@ -11,6 +11,8 @@ import scipy
 from sklearn.metrics.pairwise import cosine_similarity
 from scipy.stats import kurtosis, skew
 from sklearn.decomposition import PCA
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import mean_squared_error, r2_score
 
 
 from .moment import perturb_activations_MOMENT, get_activations_MOMENT
@@ -18,7 +20,7 @@ from .chronos import perturb_activations_Chronos, get_activations_Chronos, predi
 from .perturb import add
 from .steering import get_steering_matrix_and_middle_point, get_middle_point
 from .utils import load_dataset, get_sample_from_dataset
-from .separability import embeddings_pca, embeddings_lda
+from .separability import embeddings_pca_corr, embeddings_lda, embeddings_pca
 from .separability import compute_and_plot_separability, visualize_embeddings_pca, visualize_embeddings_lda
 from .angular import cartesian_to_hyperspherical, cartesian_to_hyperspherical_batched, save_signal_plots
 from .angular import hyperspherical_to_cartesian, hyperspherical_to_cartesian_batched, keep_top_n_diff, keep_top_n_diff_batched
@@ -112,126 +114,67 @@ def extract_activations(dataset_path, model_type="moment", num_samples=20, devic
         raise ValueError(f"Unsupported model type: {model_type}")
     
 
-
-#angular experiment for 3 clusters
-def run_angular_experiment(
+def run_correlation_experiment(
     source_dataset_path, 
     target_dataset_path,
-    next_dataset_path,
-    multiple=True, 
+    num_samples=50,
     model_type="moment",
-    method="mean",
-    num_samples=20,
-    alpha=1.0,
     output_dir="results",
-    device="cpu",
-    visualise=False
+    device="cpu"
 ):
 
-    logging.info(f"Running steering experiment: {source_dataset_path} -> {target_dataset_path}")
+    logging.info(f"Running correlation experiment: {source_dataset_path} -> {target_dataset_path}")
     
     os.makedirs(output_dir, exist_ok=True)
     
-    source_name = Path(source_dataset_path).stem
-    target_name = Path(target_dataset_path).stem
-    
     source_activations = extract_activations(source_dataset_path, model_type, num_samples, device)
     target_activations = extract_activations(target_dataset_path, model_type, num_samples, device)
-    next_activations = extract_activations(next_dataset_path, model_type, num_samples, device)
-    middle_point = get_middle_point(source_activations, target_activations, next_activations, method=method)
+    source_reduced, target_reduced, next_reduced = embeddings_pca(source_activations, target_activations, target_activations, n=2)
     
+    source_emb =  np.mean(source_activations[23, :, :, :], axis=1)
+    target_emb =  np.mean(target_activations[23, :, :, :], axis=1)
+    
+    reg = LinearRegression()
+    reg.fit(source_emb, target_emb)
+    target_pred = reg.predict(source_emb)
 
-    #can be ignored now
-    if multiple == False:
-        steering_vector = torch.Tensor(steering_vector).mean(dim=1)
-        
-    else:
-        
-        middle_point = middle_point[:, np.newaxis, :, :] #shape (layers,1,...,...)
-        source_differences = source_activations - middle_point
-        target_differences = target_activations - middle_point
-        next_differences = next_activations - middle_point
-        
-    '''source_differences = source_differences[23, :, :, :].mean(axis=1).mean(axis=0)
-    target_differences = target_differences[23, :, :, :].mean(axis=1).mean(axis=0)
-    next_differences = next_differences[23, :, :, :].mean(axis=1).mean(axis=0)
-    trends = cartesian_to_hyperspherical(source_differences)[1]
-    sines = cartesian_to_hyperspherical(target_differences)[1]
-    exps = cartesian_to_hyperspherical(next_differences)[1]
-    plot_scatter(trends, sines, exps)'''
-    
-    
-    #source_reduced, target_reduced, next_reduced = embeddings_pca(source_differences, target_differences, next_differences, n=2)
-    rec_source = reconstruct_signals_from_n_coord(pca_order(source_differences, n=num_samples), middle_point, device=device, n=1, cut=True)
-    rec_target = reconstruct_signals_from_n_coord(pca_order(target_differences, n=num_samples), middle_point, device=device, n=1, cut=True)
-    rec_next = reconstruct_signals_from_n_coord(pca_order(next_differences, n=num_samples), middle_point, device=device, n=1, cut=True)
-    save_signal_plots(rec_source, rec_target, rec_next)
-    '''r_source, ang_source = cartesian_to_hyperspherical_batched(source_reduced)
-    r_target, ang_target = cartesian_to_hyperspherical_batched(target_reduced)
-    r_next, ang_next = cartesian_to_hyperspherical_batched(next_reduced)'''
-    
-    return  source_reduced, target_reduced, next_reduced
+    # Evaluation metrics
+    mse = mean_squared_error(target_emb, target_pred)   # average per feature
+    r2 = r2_score(target_emb, target_pred, multioutput='uniform_average')
 
+    print("MSE:", mse)
+    print("R^2:", r2)
+
+    visualize_embeddings_lda(source_activations, target_activations)
+    #source_reduced, target_reduced, next_reduced = embeddings_pca(source_activations, target_activations, target_pred, n=2)
+    reg = LinearRegression()
+    reg.fit(source_reduced, target_reduced)
+    target_pred = reg.predict(source_reduced)
+
+    # Evaluation metrics
+    mse = mean_squared_error(target_reduced, target_pred)   # average per feature
+    r2 = r2_score(target_reduced, target_pred, multioutput='uniform_average')
+
+    print("MSE:", mse)
+    print("R^2:", r2)
     
-source_dataset_path = "datasets/trend.parquet" 
-target_dataset_path = "datasets/sine.parquet" 
-next_dataset_path = "datasets/exp.parquet" 
-multiple = True
+    return source_reduced, target_reduced, next_reduced
+    
+source_dataset_path = "datasets/diverse.parquet" 
+target_dataset_path = "datasets/diverse_nl_transformed.parquet" 
+num_samples=300
 model_type="moment"
-method="mean"
-num_samples=100
-alpha=1.0
 output_dir="results"
 device="cpu"
 
-source_reduced, target_reduced, next_reduced = run_angular_experiment(source_dataset_path, target_dataset_path, next_dataset_path, multiple,
-                        model_type, method, num_samples, alpha, output_dir, device, visualise=True)
+source_reduced, target_reduced, next_reduced = run_correlation_experiment(source_dataset_path, target_dataset_path, 
+                     num_samples, model_type, output_dir, device)
 
-import numpy as np
-import seaborn as sns
-import matplotlib.pyplot as plt
-
-# Set plotting style
-sns.set(font_scale=2.5, style="ticks")  # Increase font sizes globally
-plt.style.use("seaborn-v0_8-whitegrid")
-plt.rcParams["font.family"] = "serif"
-
-# Compute medians
-trend_median = np.median(source_reduced, axis=0)
-sine_median = np.median(target_reduced, axis=0)
-exp_median = np.median(next_reduced, axis=0)
-
-# Compute angles (in radians) relative to x-axis
-def compute_angle(vec):
-    return np.arctan2(vec[1], vec[0])  # returns signed angle in radians
-
-angle_trend = compute_angle(trend_median)
-angle_sine = compute_angle(sine_median)
-angle_exp = compute_angle(exp_median)
-
-# Print angles to console in order
-print(f"Trend angle (radians): {angle_trend:+.4f}")
-print(f"Sine angle  (radians): {angle_sine:+.4f}")
-print(f"Exp angle   (radians): {angle_exp:+.4f}")
-
-# Create plot
 fig, ax = plt.subplots(figsize=(12, 10))
 ax.scatter(source_reduced[:, 0], source_reduced[:, 1], c="blue", label="Trends", alpha=0.6)
 ax.scatter(target_reduced[:, 0], target_reduced[:, 1], c="red", label="Sines", alpha=0.6)
 ax.scatter(next_reduced[:, 0], next_reduced[:, 1], c="green", label="Exponentials", alpha=0.6)
 
-# Add median markers
-ax.scatter(*trend_median[:2], c="blue", s=250, marker="X", edgecolor="black", label="Trend Median")
-ax.scatter(*sine_median[:2], c="red", s=250, marker="X", edgecolor="black", label="Sine Median")
-ax.scatter(*exp_median[:2], c="green", s=250, marker="X", edgecolor="black", label="Exp Median")
-
-# Draw bold arrows from (0,0) to medians
-ax.arrow(0, 0, trend_median[0], trend_median[1], color="blue", width=0.05, head_width=0.4, length_includes_head=True)
-ax.arrow(0, 0, sine_median[0], sine_median[1], color="red", width=0.05, head_width=0.4, length_includes_head=True)
-ax.arrow(0, 0, exp_median[0], exp_median[1], color="green", width=0.05, head_width=0.4, length_includes_head=True)
-
-# Add horizontal line
-ax.axhline(0, color="black", linestyle="--", linewidth=1)
 
 # Set titles and labels (2x size)
 ax.set_title("PCA", fontsize=30, pad=30)
@@ -242,15 +185,8 @@ ax.grid(True)
 
 # Save and show
 plt.tight_layout()
-plt.savefig("/zfsauton2/home/ekaczmar/representations-in-tsfms-main/representations-in-tsfms-main/hough_transform/vector_plots/pca.png", bbox_inches="tight")
+plt.savefig("/zfsauton2/home/ekaczmar/representations-in-tsfms-main/representations-in-tsfms-main/hough_transform/results_corr/pca.png", bbox_inches="tight")
 plt.show()
 
 
 
-
-
-      
-#plot_3d_clusters(source_reduced, target_reduced, next_reduced)      
-#plot_angles_histogram(ang_source, ang_target, ang_next)
-#plot_angles_2d(ang_source, ang_target, ang_next)
-    

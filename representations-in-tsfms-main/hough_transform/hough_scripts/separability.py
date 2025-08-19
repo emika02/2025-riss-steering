@@ -198,7 +198,7 @@ def visualize_embeddings_pca(
 def embeddings_pca(
     one_activations,
     other_activations,
-    next_activations,
+    next_activations=None,
     coordinates=23,
     n=3,
 ):
@@ -225,7 +225,7 @@ def embeddings_pca(
         layer_to_visualize = coordinates
         one_patch_embeddings = np.mean(one_activations[layer_to_visualize, :, :, :], axis=1)
         other_patch_embeddings = np.mean(other_activations[layer_to_visualize, :, :, :], axis=1)
-        next_patch_embeddings = np.mean(next_activations[layer_to_visualize, :, :, :], axis=1)
+        next_patch_embeddings = next_activations#np.mean(next_activations[layer_to_visualize, :, :, :], axis=1)
 
     
     combined = np.concatenate([one_patch_embeddings, other_patch_embeddings, next_patch_embeddings], axis=0)
@@ -245,11 +245,77 @@ def embeddings_pca(
     
     return source_reduced, target_reduced, next_reduced
 
+def embeddings_pca_corr(
+    one_activations,
+    other_activations,
+    coordinates=23,
+    n=3,
+    visualize=False
+):
+    """
+    Visualize the embeddings in a selected layer and patch after applying PCA 
+    and highlight separability between sine and none samples.
+
+    Parameters:
+    sine_constant_activations: numpy array, activations for sine_constant input
+    none_constant_activations: numpy array, activations for none_constant input
+    layer_to_visualize: int, the layer index to visualize
+    patch: int, patch index to visualize
+    title: str, the title for the plot
+    output_file: str, the file name to save the plot
+    """
+    
+    if isinstance(coordinates, tuple):
+        layer_to_visualize, patch = coordinates
+        one_patch_embeddings = one_activations[layer_to_visualize, :, patch, :]
+        other_patch_embeddings = other_activations[layer_to_visualize, :, patch, :]
+        
+    else:
+        layer_to_visualize = coordinates
+        one_patch_embeddings = np.mean(one_activations[layer_to_visualize, :, :, :], axis=1)
+        other_patch_embeddings = np.mean(other_activations[layer_to_visualize, :, :, :], axis=1)
+
+    
+    combined = np.concatenate([one_patch_embeddings, other_patch_embeddings], axis=0)
+    pca = PCA(n_components=n)
+    combined_reduced = pca.fit_transform(combined)
+    
+    n_source = one_patch_embeddings.shape[0]
+    n_target = other_patch_embeddings.shape[0]
+   # n_pre_added = next_patch_embeddings.shape[0]
+
+    idx1 = n_source
+    idx2 = idx1 + n_target
+
+    source_reduced = combined_reduced[:idx1]
+    target_reduced = combined_reduced[idx1:idx2]
+    
+    # Create plot
+    if visualize == True:
+        fig, ax = plt.subplots(figsize=(12, 10))
+        ax.scatter(source_reduced[:, 0], source_reduced[:, 1], c="blue", label="Dataset", alpha=0.6)
+        ax.scatter(target_reduced[:, 0], target_reduced[:, 1], c="red", label="Dataset Transformed", alpha=0.6)
+
+
+        ax.set_title("PCA", fontsize=30, pad=30)
+        ax.set_xlabel("Principal Component 1", fontsize=26, labelpad=20)
+        ax.set_ylabel("Principal Component 2", fontsize=26, labelpad=20)
+        ax.legend(loc="best", fontsize=22)
+        ax.grid(True)
+
+        # Save and show
+        plt.tight_layout()
+        plt.savefig("/zfsauton2/home/ekaczmar/representations-in-tsfms-main/representations-in-tsfms-main/hough_transform/results_corr/pca_corr.png", bbox_inches="tight")
+        plt.show()
+    
+    return source_reduced, target_reduced
+
+
     
 def visualize_embeddings_lda(
     one_activations,
     other_activations,
-    coordinates,
+    coordinates=23,
     title="Layer Embeddings - LDA with Shifted Samples",
     output_file="embedding_visualization_lda_1d.pdf",
 ):
@@ -318,6 +384,9 @@ def visualize_embeddings_lda(
     plt.savefig(output_file, bbox_inches="tight")
     plt.show()
     print(f"Embedding visualization saved as {output_file}")
+    
+    
+
     
 def embeddings_lda(
     one_activations,

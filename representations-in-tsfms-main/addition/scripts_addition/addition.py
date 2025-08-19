@@ -220,9 +220,9 @@ def visualize_embeddings_pca(
     plt.rcParams["font.family"] = "serif"
 
     fig, ax = plt.subplots(figsize=(12, 10))
-    ax.scatter(source_reduced[:, 0], source_reduced[:, 1], c="blue", label="Source", alpha=0.6)
-    ax.scatter(target_reduced[:, 0], target_reduced[:, 1], c="red", label="Target", alpha=0.6)
-    ax.scatter(pre_added_reduced[:, 0], pre_added_reduced[:, 1], c="green", label="Pre-added", alpha=0.6)
+    ax.scatter(source_reduced[:, 0], source_reduced[:, 1], c="blue", label="Noise+sine", alpha=0.6)
+    ax.scatter(target_reduced[:, 0], target_reduced[:, 1], c="red", label="Sine", alpha=0.6)
+    ax.scatter(pre_added_reduced[:, 0], pre_added_reduced[:, 1], c="green", label="Noise", alpha=0.6)
     #ax.scatter(post_added_reduced[:, 0], post_added_reduced[:, 1], c="purple", label="Post-added", alpha=0.6)
     #ax.scatter(ref_reduced[:, 0], ref_reduced[:, 1], c="cyan", label="Reference", alpha=0.6)
 
@@ -248,6 +248,98 @@ def visualize_embeddings_pca(
     plt.show()
     print(f"Embedding visualization saved as {output_file}")
     return source_reduced, target_reduced, pre_added_reduced, post_added_reduced, ref_reduced
+
+
+def visualize_embeddings_pca_denoising(
+    one_activations,
+    other_activations,
+    next_activations,
+    noise_activations,
+    one_noise_activations,
+    other_noise_activations,
+    next_noise_activations,
+    coordinates,
+    title="Layer Embeddings - PCA with Shifted Samples",
+    output_file="embedding_visualization.pdf"
+):
+    """
+    Visualize the embeddings in a selected layer and patch after applying PCA 
+    and highlight separability between sine and none samples.
+
+    Parameters:
+    sine_constant_activations: numpy array, activations for sine_constant input
+    none_constant_activations: numpy array, activations for none_constant input
+    layer_to_visualize: int, the layer index to visualize
+    patch: int, patch index to visualize
+    title: str, the title for the plot
+    output_file: str, the file name to save the plot
+    """
+    
+ 
+    layer_to_visualize = coordinates
+    one_patch_embeddings = np.mean(one_activations[layer_to_visualize, :, :, :], axis=1)
+    other_patch_embeddings = np.mean(other_activations[layer_to_visualize, :, :, :], axis=1)
+    next_patch_embeddings = np.mean(next_activations[layer_to_visualize, :, :, :], axis=1)
+    noise_patch_embeddings = np.mean(noise_activations[layer_to_visualize, :, :, :], axis=1)
+    one_noise_patch_embeddings = np.mean(one_noise_activations[layer_to_visualize, :, :, :], axis=1)
+    other_noise_patch_embeddings = np.mean(other_noise_activations[layer_to_visualize, :, :, :], axis=1)
+    next_noise_patch_embeddings = np.mean(next_noise_activations[layer_to_visualize, :, :, :], axis=1)
+    
+
+    combined = np.concatenate([one_patch_embeddings, other_patch_embeddings, next_patch_embeddings,
+                              one_noise_patch_embeddings, 
+                               other_noise_patch_embeddings, next_noise_patch_embeddings], axis=0)
+    pca = PCA(n_components=2)
+    combined_reduced = pca.fit_transform(combined)
+    
+    l = one_patch_embeddings.shape[0]
+
+    source_reduced = combined_reduced[:l]
+    target_reduced = combined_reduced[l:2*l]
+    next_reduced = combined_reduced[2*l:3*l]
+    noise_reduced = combined_reduced[3*l:4*l]
+    source_noise_reduced = combined_reduced[4*l:5*l]
+    target_noise_reduced = combined_reduced[5*l:6*l]
+    next_noise_reduced = combined_reduced[6*l:7*l]
+    
+        
+    # Plot
+    sns.set(font_scale=2.0, style="ticks")
+    plt.style.use("seaborn-v0_8-whitegrid")
+    plt.rcParams["font.family"] = "serif"
+
+    fig, ax = plt.subplots(figsize=(12, 10))
+    ax.scatter(source_reduced[:, 0], source_reduced[:, 1], c="blue", label="Source", alpha=0.6)
+    ax.scatter(target_reduced[:, 0], target_reduced[:, 1], c="red", label="Target", alpha=0.6)
+    ax.scatter(next_reduced[:, 0], next_reduced[:, 1], c="green", label="next", alpha=0.6)
+    #ax.scatter(noise_reduced[:, 0], noise_reduced[:, 1], c="purple", label="noise", alpha=0.6)
+    ax.scatter(source_noise_reduced[:, 0], source_noise_reduced[:, 1], c="cyan", label="source noise", alpha=0.6)
+    ax.scatter(target_noise_reduced[:, 0], target_noise_reduced[:, 1], c="orange", label="target noise", alpha=0.6)
+    ax.scatter(next_noise_reduced[:, 0], next_noise_reduced[:, 1], c="pink", label="next noise", alpha=0.6)
+
+
+    
+    ax.set_title(title, fontsize=24, pad=30)
+    ax.set_xlabel("Principal Component 1", fontsize=22, labelpad=20)
+    ax.set_ylabel("Principal Component 2", fontsize=22, labelpad=20)
+    ax.legend(loc="best", fontsize=18)
+    ax.grid(True)
+    
+    '''for i in range(len(pre_added_reduced)):
+        ax.plot(
+            [pre_added_reduced[i, 0], post_added_reduced[i, 0]],
+            [pre_added_reduced[i, 1], post_added_reduced[i, 1]],
+            color="gray",
+            linestyle="--",
+            linewidth=1,
+            alpha=0.6
+        )'''
+
+    plt.tight_layout()
+    plt.savefig(output_file, bbox_inches="tight")
+    plt.show()
+    print(f"Embedding visualization saved as {output_file}")
+    #return source_reduced, target_reduced, pre_added_reduced, post_added_reduced, ref_reduced
     
 def visualize_embeddings_lda(
     one_activations,
