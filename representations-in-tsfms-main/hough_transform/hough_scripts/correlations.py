@@ -138,7 +138,7 @@ def run_correlation_experiment(
     
     indices = np.random.permutation(num_samples)
 
-    # split into halves
+    #split into halves
     half = num_samples // 2
     train_idx, test_idx = indices[:half], indices[half:]
 
@@ -150,7 +150,7 @@ def run_correlation_experiment(
     reg = LinearRegression()
     reg.fit(X_train, y_train)
 
-    # predictions
+    #predictions
     y_pred_train = reg.predict(X_train)
     y_pred_test  = reg.predict(X_test)
 
