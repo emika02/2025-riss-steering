@@ -225,7 +225,7 @@ def embeddings_pca(
         layer_to_visualize = coordinates
         one_patch_embeddings = np.mean(one_activations[layer_to_visualize, :, :, :], axis=1)
         other_patch_embeddings = np.mean(other_activations[layer_to_visualize, :, :, :], axis=1)
-        next_patch_embeddings = next_activations#np.mean(next_activations[layer_to_visualize, :, :, :], axis=1)
+        next_patch_embeddings = next_activations #np.mean(next_activations[layer_to_visualize, :, :, :], axis=1)
 
     
     combined = np.concatenate([one_patch_embeddings, other_patch_embeddings, next_patch_embeddings], axis=0)

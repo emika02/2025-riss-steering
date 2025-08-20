@@ -162,7 +162,7 @@ def generate_trend_sine_sum_datasets(n_series=50, length=512, a=2, b=1, output_d
         
         diverse =  trend_series + exp_series + sine_series  #+ noise_series
         diverse_transformed =  [a * ts + b for ts in diverse]
-        diverse_nl_transformed = [ ts**1.5  for ts in diverse]
+        diverse_nl_transformed = [ ts**2  for ts in diverse]
 
     # Convert to DataFrames
     trend_df = pd.DataFrame({"series": [s for s in trend_series]})

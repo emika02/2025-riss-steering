@@ -129,34 +129,48 @@ def run_correlation_experiment(
     
     source_activations = extract_activations(source_dataset_path, model_type, num_samples, device)
     target_activations = extract_activations(target_dataset_path, model_type, num_samples, device)
-    source_reduced, target_reduced, next_reduced = embeddings_pca(source_activations, target_activations, target_activations, n=2)
+     #source_reduced, target_reduced, next_reduced = embeddings_pca(source_activations, target_activations, target_activations, n=2)
     
     source_emb =  np.mean(source_activations[23, :, :, :], axis=1)
     target_emb =  np.mean(target_activations[23, :, :, :], axis=1)
+    print("Source variance:", np.var(source_emb, axis=0).mean())
+    print("Target variance:", np.var(target_emb, axis=0).mean())
     
+    indices = np.random.permutation(num_samples)
+
+    # split into halves
+    half = num_samples // 2
+    train_idx, test_idx = indices[:half], indices[half:]
+
+    # training and test sets
+    X_train, y_train = source_emb[train_idx], target_emb[train_idx]
+    X_test,  y_test  = source_emb[test_idx], target_emb[test_idx]
+
+    # fit on training half
     reg = LinearRegression()
-    reg.fit(source_emb, target_emb)
-    target_pred = reg.predict(source_emb)
+    reg.fit(X_train, y_train)
+
+    # predictions
+    y_pred_train = reg.predict(X_train)
+    y_pred_test  = reg.predict(X_test)
+
+    # evaluation
+    print("Train MSE:", mean_squared_error(y_train, y_pred_train))
+    print("Train R^2:", r2_score(y_train, y_pred_train))
+    print("Test  MSE:", mean_squared_error(y_test, y_pred_test))
+    print("Test  R^2:", r2_score(y_test, y_pred_test))
 
     # Evaluation metrics
-    mse = mean_squared_error(target_emb, target_pred)   # average per feature
+    '''mse = mean_squared_error(target_emb, target_pred)   # average per feature
     r2 = r2_score(target_emb, target_pred, multioutput='uniform_average')
 
     print("MSE:", mse)
     print("R^2:", r2)
 
-    visualize_embeddings_lda(source_activations, target_activations)
-    #source_reduced, target_reduced, next_reduced = embeddings_pca(source_activations, target_activations, target_pred, n=2)
-    reg = LinearRegression()
-    reg.fit(source_reduced, target_reduced)
-    target_pred = reg.predict(source_reduced)
-
-    # Evaluation metrics
-    mse = mean_squared_error(target_reduced, target_pred)   # average per feature
-    r2 = r2_score(target_reduced, target_pred, multioutput='uniform_average')
-
-    print("MSE:", mse)
-    print("R^2:", r2)
+    visualize_embeddings_lda(source_activations, target_activations)'''
+    
+    source_reduced, target_reduced, next_reduced = embeddings_pca(source_activations[:, test_idx,:,:], target_activations[:, test_idx,:,:], y_pred_test, n=2)
+  
     
     return source_reduced, target_reduced, next_reduced
     
@@ -171,12 +185,12 @@ source_reduced, target_reduced, next_reduced = run_correlation_experiment(source
                      num_samples, model_type, output_dir, device)
 
 fig, ax = plt.subplots(figsize=(12, 10))
-ax.scatter(source_reduced[:, 0], source_reduced[:, 1], c="blue", label="Trends", alpha=0.6)
-ax.scatter(target_reduced[:, 0], target_reduced[:, 1], c="red", label="Sines", alpha=0.6)
-ax.scatter(next_reduced[:, 0], next_reduced[:, 1], c="green", label="Exponentials", alpha=0.6)
+ax.scatter(source_reduced[:, 0], source_reduced[:, 1], c="blue", label="Test Dataset", alpha=0.6)
+ax.scatter(target_reduced[:, 0], target_reduced[:, 1], c="red", label="Test Dataset Transformed original", alpha=0.6)
+ax.scatter(next_reduced[:, 0], next_reduced[:, 1], c="green", label="Test Dataset Transformed Reconstructed", alpha=0.6)
 
 
-# Set titles and labels (2x size)
+# Set titles and labels (2x size) 
 ax.set_title("PCA", fontsize=30, pad=30)
 ax.set_xlabel("Principal Component 1", fontsize=26, labelpad=20)
 ax.set_ylabel("Principal Component 2", fontsize=26, labelpad=20)
