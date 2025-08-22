@@ -12,6 +12,7 @@ from sklearn.decomposition import PCA
 from sklearn.metrics.pairwise import cosine_similarity
 from scipy.stats import kurtosis, skew
 from .moment import create_prediction_mask_MOMENT
+from transformers.modeling_outputs import BaseModelOutput
 
 
 def cartesian_to_hyperspherical(vector): #for 1 sample for now 
@@ -257,37 +258,19 @@ def save_signal_plots(source, target, next, title="Reconstructed mean time serie
     plt.savefig(output_path)
     print(f"Plot saved to {output_path}")
 
- # Adjust import path as needed
-from transformers.modeling_outputs import BaseModelOutput
 
-def inject_custom_final_activations(
-    filtered_activations: torch.Tensor,
-    device: str = "cpu",
-):
-    """
-    Inject pre-computed final layer activations into the MOMENT model
-    and run it through the decoder to get the output.
 
-    Args:
-        filtered_activations (torch.Tensor): Tensor of shape (batch, seq_len, dim)
-        device (str): 'cpu' or 'cuda'
+def inject_custom_final_activations(filtered_activations, device="cpu"):
 
-    Returns:
-        numpy.ndarray: Output from the decoder
-    """
     if not isinstance(device, torch.device):
         device = torch.device(device)
 
     filtered_activations = filtered_activations.to(device)
     batch_size, seq_len, dim = filtered_activations.shape
 
-    # Create dummy dataset to satisfy input requirements
     dummy_dataset = torch.randn(batch_size, 1, seq_len).to(device)
-
-    # Create prediction mask
     input_mask = create_prediction_mask_MOMENT(batch_size, seq_len, seq_len, device)
 
-    # Load and initialize model
     model = MOMENTPipeline.from_pretrained(
         "AutonLab/MOMENT-1-large",
         model_kwargs={"task_name": "reconstruction", "device": device},
@@ -296,18 +279,14 @@ def inject_custom_final_activations(
     model.eval()
     model.to(device)
 
-    # Hook to override encoder output
     def encoder_override_hook(module, input, output):
         return BaseModelOutput(last_hidden_state=filtered_activations)
 
-    # Register hook on encoder output
     handle = model.encoder.register_forward_hook(encoder_override_hook)
 
-    # Run model forward pass
     with torch.no_grad():
         outputs = model(x_enc=dummy_dataset, input_mask=input_mask)
 
-    # Remove the hook after forward pass
     handle.remove()
 
     return outputs.reconstruction.detach().cpu().numpy()
@@ -330,10 +309,14 @@ def reconstruct_signals_from_n_coord(differences, middle_point, device, n=20, la
 
 
 def pca_order(vector, n=None):
-    # vector: (layers, samples, patches, dim)
-    if n==None:
-        n=dim
+    """
+    vector: (layers, samples, patches, dim)
+    n: number of PCA components to keep (<= dim).
+       If None, keeps all dims.
+    """
     dim = vector.shape[-1]
+    if n is None:
+        n = dim
 
     # Step 1: Extract last layer & mean over patches -> (samples, dim)
     last_layer_mean = np.mean(vector[-1, :, :, :], axis=1)  # shape: (samples, dim)
@@ -343,14 +326,13 @@ def pca_order(vector, n=None):
     pca.fit(last_layer_mean)
 
     # Step 3: Get rotation matrix, but reverse the order of components
-    rotation = pca.components_[::-1]  # now least variance first, most variance last
+    rotation = pca.components_[::-1]  # shape (n, dim)
 
-    # Step 4: Apply to all layers without changing shape
-    reshaped = vector.reshape(-1, dim)   # (layers*samples*patches, dim)
-    reordered = reshaped @ rotation.T
-    reordered = reordered.reshape(vector.shape)
+    # Step 4: Apply rotation to all layers
+    reshaped = vector.reshape(-1, dim)        # (layers*samples*patches, dim)
+    reordered = reshaped @ rotation.T         # (layers*samples*patches, n)
+    reordered = reordered.reshape(*vector.shape[:-1], n)
 
     return reordered
 
-    
     

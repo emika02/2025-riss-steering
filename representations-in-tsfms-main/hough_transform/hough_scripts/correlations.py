@@ -11,8 +11,9 @@ import scipy
 from sklearn.metrics.pairwise import cosine_similarity
 from scipy.stats import kurtosis, skew
 from sklearn.decomposition import PCA
-from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import LinearRegression, RidgeCV, LassoCV, MultiTaskLassoCV
 from sklearn.metrics import mean_squared_error, r2_score
+
 
 
 from .moment import perturb_activations_MOMENT, get_activations_MOMENT
@@ -117,7 +118,9 @@ def extract_activations(dataset_path, model_type="moment", num_samples=20, devic
 def run_correlation_experiment(
     source_dataset_path, 
     target_dataset_path,
+    next_dataset_path,
     num_samples=50,
+    reg=None,
     model_type="moment",
     output_dir="results",
     device="cpu"
@@ -129,36 +132,51 @@ def run_correlation_experiment(
     
     source_activations = extract_activations(source_dataset_path, model_type, num_samples, device)
     target_activations = extract_activations(target_dataset_path, model_type, num_samples, device)
+    next_activations = extract_activations(next_dataset_path, model_type, num_samples, device)
      #source_reduced, target_reduced, next_reduced = embeddings_pca(source_activations, target_activations, target_activations, n=2)
     
     source_emb =  np.mean(source_activations[23, :, :, :], axis=1)
     target_emb =  np.mean(target_activations[23, :, :, :], axis=1)
-    print("Source variance:", np.var(source_emb, axis=0).mean())
-    print("Target variance:", np.var(target_emb, axis=0).mean())
+    next_emb =  np.mean(next_activations[23, :, :, :], axis=1)
+    print("Dataset variance:", np.var(source_emb, axis=0).mean())
+    print("Dataset linerar variance:", np.var(target_emb, axis=0).mean())
+    print("Dataset non-linerar variance:", np.var(next_emb, axis=0).mean())
     
     indices = np.random.permutation(num_samples)
 
     #split into halves
     half = num_samples // 2
     train_idx, test_idx = indices[:half], indices[half:]
+    
+    X_train, y_train = source_emb[train_idx], target_emb[train_idx] 
+    X_test, y_test = source_emb[test_idx], target_emb[test_idx]
 
-    # training and test sets
-    X_train, y_train = source_emb[train_idx], target_emb[train_idx]
-    X_test,  y_test  = source_emb[test_idx], target_emb[test_idx]
+    if reg == None:
+        model = LinearRegression()
+    elif reg == "l2":
+        model = RidgeCV(alphas=[0.1, 1.0, 10.0])  # sprawdzi różne α
+    elif reg == "l1":
+        model = MultiTaskLassoCV(alphas=[0.001, 0.01, 0.1, 1.0], cv=5, max_iter=5000)
+    else:
+            raise ValueError("reg must be one of: None, 'l2', 'l1'")
 
-    # fit on training half
-    reg = LinearRegression()
-    reg.fit(X_train, y_train)
+    # fit model
+    model.fit(X_train, y_train)
 
-    #predictions
-    y_pred_train = reg.predict(X_train)
-    y_pred_test  = reg.predict(X_test)
+    # predictions
+    y_pred_train = model.predict(X_train)
+    y_pred_test  = model.predict(X_test)
 
+    print("Linear transform")
     # evaluation
     print("Train MSE:", mean_squared_error(y_train, y_pred_train))
     print("Train R^2:", r2_score(y_train, y_pred_train))
     print("Test  MSE:", mean_squared_error(y_test, y_pred_test))
     print("Test  R^2:", r2_score(y_test, y_pred_test))
+
+    # jeśli model ma alpha_ (RidgeCV, LassoCV), pokaż wybrane α
+    if hasattr(model, "alpha_"):
+        print("Best alpha chosen:", model.alpha_)
 
     # Evaluation metrics
     '''mse = mean_squared_error(target_emb, target_pred)   # average per feature
@@ -169,20 +187,53 @@ def run_correlation_experiment(
 
     visualize_embeddings_lda(source_activations, target_activations)'''
     
-    source_reduced, target_reduced, next_reduced = embeddings_pca(source_activations[:, test_idx,:,:], target_activations[:, test_idx,:,:], y_pred_test, n=2)
   
+    X_train, y_train = source_emb[train_idx], next_emb[train_idx] 
+    X_test, y_test = source_emb[test_idx], next_emb[test_idx]
+
+    if reg == None:
+        model = LinearRegression()
+    elif reg == "l2":
+        model = RidgeCV(alphas=[0.1, 1.0, 10.0])  # sprawdzi różne α
+    elif reg == "l1":
+        model = LassoCV(alphas=[0.001, 0.01, 0.1, 1.0], cv=5, max_iter=5000)
+    else:
+            raise ValueError("reg must be one of: None, 'l2', 'l1'")
+
+    # fit model
+    model.fit(X_train, y_train)
+
+    # predictions
+    y_pred_train = model.predict(X_train)
+    y_pred_test  = model.predict(X_test)
+
+    print("Non-linear transform")
+    # evaluation
+    print("Train MSE:", mean_squared_error(y_train, y_pred_train))
+    print("Train R^2:", r2_score(y_train, y_pred_train))
+    print("Test  MSE:", mean_squared_error(y_test, y_pred_test))
+    print("Test  R^2:", r2_score(y_test, y_pred_test))
+
+    # jeśli model ma alpha_ (RidgeCV, LassoCV), pokaż wybrane α
+    if hasattr(model, "alpha_"):
+        
+        print("Best alpha chosen:", model.alpha_)
+        
+    source_reduced, target_reduced, next_reduced = embeddings_pca(source_activations[:, test_idx,:,:], next_activations[:, test_idx,:,:], y_pred_test, n=2)
     
     return source_reduced, target_reduced, next_reduced
     
 source_dataset_path = "datasets/diverse.parquet" 
-target_dataset_path = "datasets/diverse_nl_transformed.parquet" 
+target_dataset_path = "datasets/diverse_transformed.parquet" 
+next_dataset_path = "datasets/diverse_nl_transformed.parquet" 
 num_samples=300
+reg="l1"
 model_type="moment"
 output_dir="results"
 device="cpu"
 
-source_reduced, target_reduced, next_reduced = run_correlation_experiment(source_dataset_path, target_dataset_path, 
-                     num_samples, model_type, output_dir, device)
+source_reduced, target_reduced, next_reduced = run_correlation_experiment(source_dataset_path, target_dataset_path, next_dataset_path,
+                     num_samples, reg, model_type, output_dir, device)
 
 fig, ax = plt.subplots(figsize=(12, 10))
 ax.scatter(source_reduced[:, 0], source_reduced[:, 1], c="blue", label="Test Dataset", alpha=0.6)

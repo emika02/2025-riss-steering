@@ -118,74 +118,66 @@ def run_angular_experiment(
     source_dataset_path, 
     target_dataset_path,
     next_dataset_path,
-    multiple=True, 
     model_type="moment",
     method="mean",
     num_samples=20,
-    alpha=1.0,
     output_dir="results",
     device="cpu",
-    visualise=False
 ):
 
     logging.info(f"Running steering experiment: {source_dataset_path} -> {target_dataset_path}")
     
     os.makedirs(output_dir, exist_ok=True)
     
-    source_name = Path(source_dataset_path).stem
-    target_name = Path(target_dataset_path).stem
-    
     source_activations = extract_activations(source_dataset_path, model_type, num_samples, device)
     target_activations = extract_activations(target_dataset_path, model_type, num_samples, device)
     next_activations = extract_activations(next_dataset_path, model_type, num_samples, device)
     middle_point = get_middle_point(source_activations, target_activations, next_activations, method=method)
-    
 
-    #can be ignored now
-    if multiple == False:
-        steering_vector = torch.Tensor(steering_vector).mean(dim=1)
         
-    else:
-        
-        middle_point = middle_point[:, np.newaxis, :, :] #shape (layers,1,...,...)
-        source_differences = source_activations - middle_point
-        target_differences = target_activations - middle_point
-        next_differences = next_activations - middle_point
-        
-    '''source_differences = source_differences[23, :, :, :].mean(axis=1).mean(axis=0)
-    target_differences = target_differences[23, :, :, :].mean(axis=1).mean(axis=0)
-    next_differences = next_differences[23, :, :, :].mean(axis=1).mean(axis=0)
-    trends = cartesian_to_hyperspherical(source_differences)[1]
-    sines = cartesian_to_hyperspherical(target_differences)[1]
-    exps = cartesian_to_hyperspherical(next_differences)[1]
-    plot_scatter(trends, sines, exps)'''
+    middle_point = middle_point[:, np.newaxis, :, :] #shape (layers,1,...,...)
+    source_differences = source_activations - middle_point
+    target_differences = target_activations - middle_point
+    next_differences = next_activations - middle_point
+    
+    source_differences_ord = pca_order(source_differences, n=num_samples)
+    target_differences_ord = pca_order(target_differences, n=num_samples)
+    next_differences_ord = pca_order(next_differences, n=num_samples)
+    source_differences_plot = source_differences_ord[23, :, :, :].mean(axis=1).mean(axis=0)
+    target_differences_plot = target_differences_ord[23, :, :, :].mean(axis=1).mean(axis=0)
+    next_differences_plot = next_differences_ord[23, :, :, :].mean(axis=1).mean(axis=0)
+    trends = cartesian_to_hyperspherical(source_differences_plot)[1]
+    sines = cartesian_to_hyperspherical(target_differences_plot)[1]
+    exps = cartesian_to_hyperspherical(next_differences_plot)[1]
+    plot_vector(trends, title="trends")
+    plot_vector(sines, title="sines")
+    plot_vector(exps, title="exps")
+    plot_scatter(trends, sines, exps)
     
     
     #source_reduced, target_reduced, next_reduced = embeddings_pca(source_differences, target_differences, next_differences, n=2)
-    rec_source = reconstruct_signals_from_n_coord(pca_order(source_differences, n=num_samples), middle_point, device=device, n=1, cut=True)
+    '''rec_source = reconstruct_signals_from_n_coord(pca_order(source_differences, n=num_samples), middle_point, device=device, n=1, cut=True)
     rec_target = reconstruct_signals_from_n_coord(pca_order(target_differences, n=num_samples), middle_point, device=device, n=1, cut=True)
     rec_next = reconstruct_signals_from_n_coord(pca_order(next_differences, n=num_samples), middle_point, device=device, n=1, cut=True)
     save_signal_plots(rec_source, rec_target, rec_next)
-    '''r_source, ang_source = cartesian_to_hyperspherical_batched(source_reduced)
+    r_source, ang_source = cartesian_to_hyperspherical_batched(source_reduced)
     r_target, ang_target = cartesian_to_hyperspherical_batched(target_reduced)
     r_next, ang_next = cartesian_to_hyperspherical_batched(next_reduced)'''
     
-    return  source_reduced, target_reduced, next_reduced
+    #return  source_reduced, target_reduced, next_reduced
 
     
 source_dataset_path = "datasets/trend.parquet" 
 target_dataset_path = "datasets/sine.parquet" 
 next_dataset_path = "datasets/exp.parquet" 
-multiple = True
 model_type="moment"
 method="mean"
-num_samples=100
-alpha=1.0
+num_samples=1024
 output_dir="results"
 device="cpu"
 
-source_reduced, target_reduced, next_reduced = run_angular_experiment(source_dataset_path, target_dataset_path, next_dataset_path, multiple,
-                        model_type, method, num_samples, alpha, output_dir, device, visualise=True)
+run_angular_experiment(source_dataset_path, target_dataset_path, next_dataset_path, 
+                        model_type, method, num_samples, output_dir, device)
 
 import numpy as np
 import seaborn as sns
