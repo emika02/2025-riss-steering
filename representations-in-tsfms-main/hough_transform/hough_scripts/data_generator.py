@@ -113,7 +113,7 @@ def generate_trend_sine_sum_datasets(n_series=50, length=512, a=2, b=1, add_nois
             trend_type="linear",
             seasonality_type=None,
             noise_type=None,
-            trend_params={"slope": np.random.uniform(0, 2), "intercept": np.random.uniform(0, 2)}, #(0.05,0.1)
+            trend_params={"slope": np.random.uniform(5,15), "intercept": np.random.uniform(5,15)}, #(0.05,0.1)
         )
         trend = trend_gen.generate_trend()
 
@@ -124,8 +124,8 @@ def generate_trend_sine_sum_datasets(n_series=50, length=512, a=2, b=1, add_nois
             seasonality_type="sine",
             noise_type=None,
             seasonality_params={
-                "amplitude": np.random.uniform(50, 60), #(25,27)
-                "period": np.random.uniform(64,128), #(128,128)
+                "amplitude": np.random.uniform( 75,125), #(25,27)
+                "period": np.random.uniform(96,160), #(128,128)
             },
         )
         sine = sine_gen.generate_seasonality()
@@ -136,7 +136,7 @@ def generate_trend_sine_sum_datasets(n_series=50, length=512, a=2, b=1, add_nois
             seasonality_type=None,
             noise_type=None,
             trend_params={
-                "growth_rate": np.random.uniform(0.01, 0.01000001), #(25,27)
+                "growth_rate": np.random.uniform(0.01000005, 0.01000015), #(25,27)
             },
         )
         
@@ -165,7 +165,7 @@ def generate_trend_sine_sum_datasets(n_series=50, length=512, a=2, b=1, add_nois
         exp_series.append(exp)
         noise_series.append(noise)
         
-        diverse =  trend_series + exp_series + sine_series  #+ noise_series
+        diverse =   trend_series +  sine_series + exp_series
         diverse_transformed =  [a * ts + b for ts in diverse]
         diverse_nl_transformed = [ ts**2  for ts in diverse]
 
@@ -194,9 +194,9 @@ def generate_trend_sine_sum_datasets(n_series=50, length=512, a=2, b=1, add_nois
 
     return trend_df, sine_df, sum_df, exp_df, noise_df
 
-n_series = 100
+n_series = 50
 add_noise = False
-trend_df, sine_df, sum_df, exp_df, noise_df = generate_trend_sine_sum_datasets(n_series=n_series, add_noise=add_noise)
+trend_df, sine_df, sum_df, exp_df, noise_df = generate_trend_sine_sum_datasets(n_series=n_series, add_noise=add_noise, output_dir="datasets2")
 
 import os
 
@@ -222,12 +222,12 @@ exp_series = pd.Series(exp_df.iloc[0, 0])
 noise_series = pd.Series(noise_df.iloc[0, 0])
 
 trend_series = pd.Series(diverse_df.iloc[0, 0])
-exp_series = pd.Series(diverse_df.iloc[n_series, 0])
-sine_series = pd.Series(diverse_df.iloc[2*n_series, 0])
+#exp_series = pd.Series(diverse_df.iloc[n_series, 0])
+#sine_series = pd.Series(diverse_df.iloc[2*n_series, 0])
 
 trend_series_t = pd.Series(diverse_nl_transformed_df.iloc[0, 0])
-exp_series_t = pd.Series(diverse_nl_transformed_df.iloc[n_series, 0])
-sine_series_t = pd.Series(diverse_nl_transformed_df.iloc[2*n_series, 0])
+#exp_series_t = pd.Series(diverse_nl_transformed_df.iloc[n_series, 0])
+#sine_series_t = pd.Series(diverse_nl_transformed_df.iloc[2*n_series, 0])
 
 # Plot and save
 plt.figure(figsize=(12, 6))

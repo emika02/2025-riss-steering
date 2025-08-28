@@ -248,7 +248,6 @@ def embeddings_pca(
 def embeddings_pca_corr(
     one_activations,
     other_activations,
-    coordinates=23,
     n=3,
     visualize=False
 ):
@@ -264,24 +263,14 @@ def embeddings_pca_corr(
     title: str, the title for the plot
     output_file: str, the file name to save the plot
     """
-    
-    if isinstance(coordinates, tuple):
-        layer_to_visualize, patch = coordinates
-        one_patch_embeddings = one_activations[layer_to_visualize, :, patch, :]
-        other_patch_embeddings = other_activations[layer_to_visualize, :, patch, :]
-        
-    else:
-        layer_to_visualize = coordinates
-        one_patch_embeddings = np.mean(one_activations[layer_to_visualize, :, :, :], axis=1)
-        other_patch_embeddings = np.mean(other_activations[layer_to_visualize, :, :, :], axis=1)
 
     
-    combined = np.concatenate([one_patch_embeddings, other_patch_embeddings], axis=0)
+    combined = np.concatenate([one_activations, other_activations], axis=0)
     pca = PCA(n_components=n)
     combined_reduced = pca.fit_transform(combined)
     
-    n_source = one_patch_embeddings.shape[0]
-    n_target = other_patch_embeddings.shape[0]
+    n_source = one_activations.shape[0]
+    n_target = other_activations.shape[0]
    # n_pre_added = next_patch_embeddings.shape[0]
 
     idx1 = n_source
@@ -308,7 +297,7 @@ def embeddings_pca_corr(
         plt.savefig("/zfsauton2/home/ekaczmar/representations-in-tsfms-main/representations-in-tsfms-main/hough_transform/results_corr/pca_corr.png", bbox_inches="tight")
         plt.show()
     
-    return source_reduced, target_reduced
+    return source_reduced, target_reduced, pca
 
 
     
@@ -469,6 +458,101 @@ def embeddings_lda(
     print(f"Embedding visualization saved as {output_file}")
     
     return one_reduced, other_reduced, pre_added_reduced
+
+
+def lda_pca_embeddings(
+    one_activations,
+    other_activations,
+    one_activations2,
+    other_activations2,
+    n_components=2,
+):
+    """
+    Compute hybrid LDA+PCA projection on training activations, then apply
+    the learned transform to both training and secondary activations.
+
+    Parameters
+    ----------
+    one_activations : np.ndarray
+        Training activations for Class 0, shape (N0, D)
+    other_activations : np.ndarray
+        Training activations for Class 1, shape (N1, D)
+    one_activations2 : np.ndarray
+        Test activations for Class 0, shape (M0, D)
+    other_activations2 : np.ndarray
+        Test activations for Class 1, shape (M1, D)
+    n_components : int
+        Total number of projection dimensions
+
+    Returns
+    -------
+    one_reduced : np.ndarray
+        Reduced training embeddings for Class 0, shape (N0, n_components)
+    other_reduced : np.ndarray
+        Reduced training embeddings for Class 1, shape (N1, n_components)
+    one_reduced2 : np.ndarray
+        Reduced secondary embeddings for Class 0, shape (M0, n_components)
+    other_reduced2 : np.ndarray
+        Reduced secondary embeddings for Class 1, shape (M1, n_components)
+    """
+
+    # --- Training data ---
+    labels = np.concatenate([
+        np.zeros(one_activations.shape[0]),
+        np.ones(other_activations.shape[0])
+    ])
+    X_train = np.vstack([one_activations, other_activations])  # (N, D)
+
+    # --- Secondary data ---
+    X_test = np.vstack([one_activations2, other_activations2])  # (M, D)
+    labels_test = np.concatenate([
+        np.zeros(one_activations2.shape[0]),
+        np.ones(other_activations2.shape[0])
+    ])
+
+    # --- Step 1: LDA on training set ---
+    lda = LinearDiscriminantAnalysis(n_components=1)
+    lda.fit(X_train, labels)
+
+    # Project both train and test
+    lda_train = lda.transform(X_train)  # (N, 1)
+    lda_test = lda.transform(X_test)   # (M, 1)
+
+    if n_components == 1:
+        one_reduced  = lda_train[labels == 0]
+        other_reduced = lda_train[labels == 1]
+        one_reduced2 = lda_test[labels_test == 0]
+        other_reduced2 = lda_test[labels_test == 1]
+        return one_reduced, other_reduced, one_reduced2, other_reduced2
+
+    # --- Step 2: Get LDA vector ---
+    lda_vector = lda.coef_[0]
+    lda_vector /= np.linalg.norm(lda_vector)
+
+    # --- Step 3: Residual spaces (train & test) ---
+    proj_train = (X_train @ lda_vector[:, None]) * lda_vector[None, :]
+    proj_test  = (X_test  @ lda_vector[:, None]) * lda_vector[None, :]
+
+    X_train_res = X_train - proj_train
+    X_test_res  = X_test  - proj_test
+
+    # --- Step 4: PCA on training residuals ---
+    pca = PCA(n_components=n_components - 1)
+    pca_train = pca.fit_transform(X_train_res)
+    pca_test  = pca.transform(X_test_res)
+
+    # --- Step 5: Combine LDA + PCA ---
+    reduced_train = np.hstack([lda_train, pca_train])
+    reduced_test  = np.hstack([lda_test,  pca_test])
+
+    # --- Step 6: Split by class ---
+    one_reduced   = reduced_train[labels == 0]
+    other_reduced = reduced_train[labels == 1]
+    one_reduced2  = reduced_test[labels_test == 0]
+    other_reduced2= reduced_test[labels_test == 1]
+
+    return one_reduced, other_reduced, one_reduced2, other_reduced2
+
    
 
 def compute_and_plot_separability(
