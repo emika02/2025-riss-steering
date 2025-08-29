@@ -119,12 +119,13 @@ def extract_activations(dataset_path, model_type="moment", num_samples=20, devic
 def run_correlation_experiment(
     source_dataset_path, 
     target_dataset_path,
-    next_dataset_path,
     num_samples=50,
+    n_pca=[0],
     reg=None,
     model_type="moment",
     output_dir="results",
-    device="cpu"
+    device="cpu",
+    save=False
 ):
 
     logging.info(f"Running correlation experiment: {source_dataset_path} -> {target_dataset_path}")
@@ -133,96 +134,96 @@ def run_correlation_experiment(
     
     source_activations = extract_activations(source_dataset_path, model_type, num_samples, device)
     target_activations = extract_activations(target_dataset_path, model_type, num_samples, device)
-    next_activations = extract_activations(next_dataset_path, model_type, num_samples, device)
-     #source_reduced, target_reduced, next_reduced = embeddings_pca(source_activations, target_activations, target_activations, n=2)
     
     source_emb =  np.mean(source_activations[23, :, :, :], axis=1)
     target_emb =  np.mean(target_activations[23, :, :, :], axis=1)
-    next_emb =  np.mean(next_activations[23, :, :, :], axis=1)
+
     print("Dataset variance:", np.var(source_emb, axis=0).mean())
     print("Dataset linerar variance:", np.var(target_emb, axis=0).mean())
-    print("Dataset non-linerar variance:", np.var(next_emb, axis=0).mean())
     
+     #split into halves
     indices = np.random.permutation(num_samples)
-
-    #split into halves
     half = num_samples // 2
     train_idx, test_idx = indices[:half], indices[half:]
     
     X_train, y_train = source_emb[train_idx], target_emb[train_idx] 
     X_test, y_test = source_emb[test_idx], target_emb[test_idx]
-
-    if reg == None:
-        model = LinearRegression()
-    elif reg == "l2":
-        model = RidgeCV(alphas=[0.1, 1.0, 10.0])  # sprawdzi różne α
-    elif reg == "l1":
-        model = MultiTaskLassoCV(alphas=[0.001, 0.01, 0.1, 1.0], cv=5, max_iter=5000)
-    else:
-            raise ValueError("reg must be one of: None, 'l2', 'l1'")
-
-    # fit model
-    model.fit(X_train, y_train)
-
-    # predictions
-    y_pred_train = model.predict(X_train)
-    y_pred_test  = model.predict(X_test)
-
-    print("Linear transform")
-    # evaluation
-    print("Train MSE:", mean_squared_error(y_train, y_pred_train))
-    print("Train R^2:", r2_score(y_train, y_pred_train))
-    print("Test  MSE:", mean_squared_error(y_test, y_pred_test))
-    print("Test  R^2:", r2_score(y_test, y_pred_test))
-
-    # jeśli model ma alpha_ (RidgeCV, LassoCV), pokaż wybrane α
-    if hasattr(model, "alpha_"):
-        print("Best alpha chosen:", model.alpha_)
-
-    # Evaluation metrics
-    '''mse = mean_squared_error(target_emb, target_pred)   # average per feature
-    r2 = r2_score(target_emb, target_pred, multioutput='uniform_average')
-
-    print("MSE:", mse)
-    print("R^2:", r2)
-
-    visualize_embeddings_lda(source_activations, target_activations)'''
     
-  
-    X_train, y_train = source_emb[train_idx], next_emb[train_idx] 
-    X_test, y_test = source_emb[test_idx], next_emb[test_idx]
+    r2_l = []
+    for n in n_pca:
+        print("n:",n)
+        if n != 0:
+            source_emb_r, target_emb_r, pca = embeddings_pca_corr(X_train, y_train, n=n) 
+            source_emb2_r = pca.transform(X_test)
+            target_emb2_r = pca.transform(y_test)
+            #source_emb_r, target_emb_r, source_emb2_r, target_emb2_r = lda_pca_embeddings(source_emb, target_emb, source_emb2, target_emb2, n_components=n)
+            
+        else:
+            source_emb_r, target_emb_r = X_train, y_train
+            source_emb2_r, target_emb2_r = X_test, y_test
 
-    if reg == None:
-        model = LinearRegression()
-    elif reg == "l2":
-        model = RidgeCV(alphas=[0.1, 1.0, 10.0])  # sprawdzi różne α
-    elif reg == "l1":
-        model = LassoCV(alphas=[0.001, 0.01, 0.1, 1.0], cv=5, max_iter=5000)
-    else:
-            raise ValueError("reg must be one of: None, 'l2', 'l1'")
+        if reg == None:
+            model = LinearRegression()
+        elif reg == "l2":
+            model = RidgeCV(alphas=[0.1, 1.0, 10.0])  # sprawdzi różne α
+        elif reg == "l1":
+            model = MultiTaskLassoCV(alphas=[0.001, 0.01, 0.1, 1.0], cv=5, n_jobs=-1, max_iter=10000)
+            #model = MultiTaskLassoCV(alphas=[0.001, 0.01, 0.1, 1.0], cv=5, max_iter=5000)
+        else:
+                raise ValueError("reg must be one of: None, 'l2', 'l1'")
 
-    # fit model
-    model.fit(X_train, y_train)
+        # fit model
+        model.fit(source_emb_r, target_emb_r)
 
-    # predictions
-    y_pred_train = model.predict(X_train)
-    y_pred_test  = model.predict(X_test)
+        # predictions
+        y_pred_train = model.predict(source_emb_r)
+        y_pred_test  = model.predict(source_emb2_r)
 
-    print("Non-linear transform")
-    # evaluation
-    print("Train MSE:", mean_squared_error(y_train, y_pred_train))
-    print("Train R^2:", r2_score(y_train, y_pred_train))
-    print("Test  MSE:", mean_squared_error(y_test, y_pred_test))
-    print("Test  R^2:", r2_score(y_test, y_pred_test))
-
-    # jeśli model ma alpha_ (RidgeCV, LassoCV), pokaż wybrane α
-    if hasattr(model, "alpha_"):
+        print("Linear transform")
+        # evaluation
+        print("Train MSE:", mean_squared_error(source_emb_r, y_pred_train))
+        print("Train R^2:", r2_score(source_emb_r, y_pred_train))
+        print("Test  MSE:", mean_squared_error(target_emb2_r, y_pred_test))
+        print("Test  R^2:", r2_score(target_emb2_r, y_pred_test))
         
-        print("Best alpha chosen:", model.alpha_)
+        r2_l.append(r2_score(target_emb2_r, y_pred_test))
+
+        # jeśli model ma alpha_ (RidgeCV, LassoCV), pokaż wybrane α
+        if hasattr(model, "alpha_"):
+            print("Best alpha chosen:", model.alpha_)    
         
-    source_reduced, target_reduced, next_reduced = embeddings_pca(source_activations[:, test_idx,:,:], next_activations[:, test_idx,:,:], y_pred_test, n=2)
+        if save==True:
+            coef = model.coef_
+            intercept = model.intercept_
+            importances = np.sum(np.abs(coef), axis=0)
+            importances2 = np.sum(np.abs(coef), axis=1)
+
+            np.save("results_corr/coef_linear.npy", importances)
+            np.save("results_corr/coef_linear2.npy", importances2)
+            np.save("results_corr/intercept_linear.npy", intercept)
+            
+            
+            plt.figure(figsize=(12, 4))
+            plt.plot(importances)
+            plt.plot(importances2)
+            plt.legend(["x","y"])
+            plt.title("Regression coefficients (slope vector)")
+            plt.xlabel("Index")
+            plt.ylabel("Coefficient value")
+            plt.tight_layout()
+            plt.savefig("results_corr/coef_linear.png", dpi=200)
+            plt.close()
+
+            plt.figure(figsize=(12, 4))
+            plt.plot(intercept.flatten())
+            plt.title("Regression intercept vector")
+            plt.xlabel("Index")
+            plt.ylabel("Intercept value")
+            plt.tight_layout()
+            plt.savefig("results_corr/intercept_linear.png", dpi=200)
+            plt.close()
+    print(r2_l)
     
-    return source_reduced, target_reduced, next_reduced
 
 def run_correlation_experiment2(
     source_dataset_path, 
@@ -424,7 +425,7 @@ def run_correlation_experiment2(
     
     #return source_reduced, target_reduced, next_reduced
     
-source_dataset_path = "datasets/diverse.parquet" 
+source_dataset_path = "datasets_pendulum/pendulum_theta.parquet"
 target_dataset_path = "datasets/diverse_transformed.parquet" 
 next_dataset_path = "datasets/diverse_nl_transformed.parquet" 
 source_dataset_path2 = "datasets2/diverse.parquet" 
@@ -438,18 +439,18 @@ output_dir="results"
 device="cpu"
 save=False
 
+source_dataset_path = "datasets_pendulum/pendulum_theta.parquet"
+target_dataset_path = "datasets_pendulum/pendulum_omega_prime.parquet"
 
-#source_reduced, target_reduced, next_reduced = run_correlation_experiment(source_dataset_path, target_dataset_path, next_dataset_path,
- #                    num_samples, reg, model_type, output_dir, device)
+
+run_correlation_experiment(source_dataset_path, target_dataset_path,
+                   num_samples, n_pca, reg, model_type, output_dir, device)
  
-r2_l, r2_nl = run_correlation_experiment2(source_dataset_path, target_dataset_path, next_dataset_path,
+'''r2_l, r2_nl = run_correlation_experiment2(source_dataset_path, target_dataset_path, next_dataset_path,
                     source_dataset_path2, target_dataset_path2, next_dataset_path2,                   
                     num_samples, n_pca, reg, model_type, output_dir, device,save)
 
-print(r2_l)
-print(r2_nl)
-
-'''fig, ax = plt.subplots(figsize=(12, 10))
+fig, ax = plt.subplots(figsize=(12, 10))
 ax.scatter(source_reduced[:, 0], source_reduced[:, 1], c="blue", label="Test Dataset", alpha=0.6)
 ax.scatter(target_reduced[:, 0], target_reduced[:, 1], c="red", label="Test Dataset Transformed original", alpha=0.6)
 ax.scatter(next_reduced[:, 0], next_reduced[:, 1], c="green", label="Test Dataset Transformed Reconstructed", alpha=0.6)
