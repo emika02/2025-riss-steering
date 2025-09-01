@@ -158,12 +158,14 @@ def generate_trend_sine_sum_datasets(n_series=50, length=512, a=2, b=1, add_nois
             trend += noise
             sine += noise 
             exp += noise
+            
 
         trend_series.append(trend)
         sine_series.append(sine)
         sum_series.append(added)
         exp_series.append(exp)
         noise_series.append(noise)
+
         
         diverse =   trend_series + exp_series + sine_series
         diverse_transformed =  [a * ts + b for ts in diverse]
@@ -181,7 +183,7 @@ def generate_trend_sine_sum_datasets(n_series=50, length=512, a=2, b=1, add_nois
     diverse_df = pd.DataFrame({"series": [s for s in diverse]})
     diverse_t_df = pd.DataFrame({"series": [s for s in diverse_transformed]})
     diverse_nl_t_df = pd.DataFrame({"series": [s for s in diverse_nl_transformed]})
-    
+
     # Save
     os.makedirs(output_dir, exist_ok=True)
     trend_df.to_parquet(os.path.join(output_dir, "trend.parquet"), index=False)
@@ -197,9 +199,9 @@ def generate_trend_sine_sum_datasets(n_series=50, length=512, a=2, b=1, add_nois
 
     return trend_df, sine_df, sum_df, exp_df, noise_df
 
-n_series = 50
+n_series = 5
 add_noise = False
-output_dir = "datasets2"
+output_dir = "datasets"
 trend_df, sine_df, sum_df, exp_df, noise_df = generate_trend_sine_sum_datasets(n_series=n_series, add_noise=add_noise, output_dir=output_dir)
 
 import os
@@ -216,7 +218,6 @@ noise_df = pd.read_parquet("datasets/noise.parquet")
 diverse_df = pd.read_parquet("datasets/diverse.parquet")
 diverse_transformed_df = pd.read_parquet("datasets/diverse_transformed.parquet")
 diverse_nl_transformed_df = pd.read_parquet("datasets/diverse_nl_transformed.parquet")
-
 
 # Extract first time series (each row contains a full series as a list/array)
 trend_series = pd.Series(trend_df.iloc[0, 0])

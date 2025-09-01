@@ -439,8 +439,8 @@ output_dir="results"
 device="cpu"
 save=False
 
-source_dataset_path = "datasets_pendulum/pendulum_theta.parquet"
-target_dataset_path = "datasets_pendulum/pendulum_omega_prime.parquet"
+source_dataset_path = "datasets_pendulum/theta.parquet"
+target_dataset_path = "datasets_pendulum/omega_prime.parquet"
 
 
 run_correlation_experiment(source_dataset_path, target_dataset_path,

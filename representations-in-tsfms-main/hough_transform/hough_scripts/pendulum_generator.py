@@ -27,13 +27,15 @@ def generate_pendulum_datasets(n_series=150, length=512, g=9.81, L=1.0, output_d
         omega0 = np.random.uniform(-1.0, 1.0)
         theta, omega_prime = simulate_pendulum(theta0, omega0, steps=length, g=g, L=L)
         
-        # store as *one object* per row
-        theta_series.append(theta.tolist())
-        omega_prime_series.append(omega_prime.tolist())
+        #print(type(omega_prime))
+        #print(omega_prime.shape)
+        # convert arrays to lists
+        theta_series.append(theta)
+        omega_prime_series.append(omega_prime)
 
-    # enforce "series" column explicitly
-    theta_df = pd.DataFrame({"series": pd.Series(theta_series)})
-    omega_prime_df = pd.DataFrame({"series": pd.Series(omega_prime_series)})
+    # enforce "series" column exactly like your working generator
+    theta_df = pd.DataFrame({"series": [s for s in theta_series]})
+    omega_prime_df = pd.DataFrame({"series": [s for s in omega_prime_series]})
 
     theta_df.to_parquet(os.path.join(output_dir, "theta.parquet"), index=False)
     omega_prime_df.to_parquet(os.path.join(output_dir, "omega_prime.parquet"), index=False)
@@ -44,5 +46,3 @@ def generate_pendulum_datasets(n_series=150, length=512, g=9.81, L=1.0, output_d
 
 if __name__ == "__main__":
     theta_df, omega_prime_df = generate_pendulum_datasets()
-    print(theta_df.head())
-    print(type(theta_df.iloc[0]["series"]))  # should show <class 'list'>
