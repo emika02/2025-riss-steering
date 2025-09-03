@@ -57,47 +57,7 @@ def extract_activations(dataset_path, model_type="moment", num_samples=20, devic
     if dataset.shape[0] > num_samples:
         logging.info(f"Limiting dataset from {dataset.shape[0]} to {num_samples} samples")
         dataset = dataset[:num_samples]
-        
-    from itertools import combinations
 
-    def check_time_series_difference_torch(data: torch.Tensor, threshold: float, metric='l2'):
-        """
-        Checks if any pair of time series in the tensor differs more than the threshold.
-        
-        Args:
-            data (torch.Tensor): shape (samples, time_points)
-            threshold (float): difference threshold
-            metric (str): distance metric ('l2' or 'abs')
-
-        Returns:
-            bool: True if any pair differs more than the threshold, False otherwise.
-            list: List of (i, j) index pairs that exceeded the threshold.
-        """
-        data = data.squeeze(1)
-        
-        if data.dim() != 2:
-            raise ValueError("Input tensor must be 2D (samples, time_points)")
-
-        exceeding_pairs = []
-        num_samples = data.shape[0]
-
-        for i, j in combinations(range(num_samples), 2):
-            x, y = data[i], data[j]
-            if metric == 'l2':
-                dist = torch.norm(x - y, p=2).item()
-            elif metric == 'abs':
-                dist = torch.max(torch.abs(x - y)).item()
-            else:
-                raise ValueError("Unsupported metric. Use 'l2' or 'abs'.")
-            
-            if dist > threshold:
-                exceeding_pairs.append((i, j))
-
-        return len(exceeding_pairs) > 0, exceeding_pairs
-
-    '''differs, pairs = check_time_series_difference_torch(dataset, threshold=500, metric='l2')
-    print("Any pair differs?", differs)
-    print("Pairs that differ:", pairs)'''
             
     if model_type.lower() == "moment":
         activations = get_activations_MOMENT(dataset, device=device)
@@ -119,6 +79,8 @@ def extract_activations(dataset_path, model_type="moment", num_samples=20, devic
 def run_correlation_experiment(
     source_dataset_path, 
     target_dataset_path,
+    source_dataset_path2, 
+    target_dataset_path2,
     num_samples=50,
     n_pca=[0],
     reg=None,
@@ -135,19 +97,26 @@ def run_correlation_experiment(
     source_activations = extract_activations(source_dataset_path, model_type, num_samples, device)
     target_activations = extract_activations(target_dataset_path, model_type, num_samples, device)
     
+    source_activations2 = extract_activations(source_dataset_path2, model_type, num_samples, device)
+    target_activations2 = extract_activations(target_dataset_path2, model_type, num_samples, device)
+    
     source_emb =  np.mean(source_activations[23, :, :, :], axis=1)
     target_emb =  np.mean(target_activations[23, :, :, :], axis=1)
+    source_emb2 =  np.mean(source_activations2[23, :, :, :], axis=1)
+    target_emb2 =  np.mean(target_activations2[23, :, :, :], axis=1)
 
     print("Dataset variance:", np.var(source_emb, axis=0).mean())
     print("Dataset linerar variance:", np.var(target_emb, axis=0).mean())
     
-     #split into halves
+    '''#split into halves
     indices = np.random.permutation(num_samples)
     half = num_samples // 2
     train_idx, test_idx = indices[:half], indices[half:]
-    
     X_train, y_train = source_emb[train_idx], target_emb[train_idx] 
-    X_test, y_test = source_emb[test_idx], target_emb[test_idx]
+    X_test, y_test = source_emb[test_idx], target_emb[test_idx]'''
+    
+    X_train, y_train = source_emb, target_emb
+    X_test, y_test = source_emb2, target_emb2
     
     r2_l = []
     for n in n_pca:
@@ -441,9 +410,23 @@ save=False
 
 source_dataset_path = "datasets_pendulum/theta.parquet"
 target_dataset_path = "datasets_pendulum/omega_prime.parquet"
+source_dataset_path2 = "datasets_pendulum2/theta.parquet"
+target_dataset_path2 = "datasets_pendulum2/omega_prime.parquet"
+
+'''source_dataset_path = "datasets/diverse.parquet"
+target_dataset_path = "datasets/diverse_nl_transformed.parquet"
+source_dataset_path2 = "datasets2/diverse.parquet"
+target_dataset_path2 = "datasets2/diverse_nl_transformed.parquet"'''
+
+source_dataset_path = "datasets_thermistor/temperature.parquet"
+target_dataset_path = "datasets_thermistor/resistance.parquet"
+source_dataset_path2 = "datasets_thermistor2/temperature.parquet"
+target_dataset_path2 = "datasets_thermistor2/resistance.parquet"
+
 
 
 run_correlation_experiment(source_dataset_path, target_dataset_path,
+                           source_dataset_path2, target_dataset_path2,
                    num_samples, n_pca, reg, model_type, output_dir, device)
  
 '''r2_l, r2_nl = run_correlation_experiment2(source_dataset_path, target_dataset_path, next_dataset_path,

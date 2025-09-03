@@ -113,7 +113,7 @@ def generate_trend_sine_sum_datasets(n_series=50, length=512, a=2, b=1, add_nois
             trend_type="linear",
             seasonality_type=None,
             noise_type=None,
-            trend_params={"slope": np.random.uniform(5,15), "intercept": np.random.uniform(5,15)}, #(0.05,0.1)
+            trend_params={"slope": np.random.uniform(10,20), "intercept": np.random.uniform(10,20)}, #(0.05,0.1)
         )
         trend = trend_gen.generate_trend()
 
@@ -124,8 +124,8 @@ def generate_trend_sine_sum_datasets(n_series=50, length=512, a=2, b=1, add_nois
             seasonality_type="sine",
             noise_type=None,
             seasonality_params={
-                "amplitude": np.random.uniform(75,125), #(25,27)
-                "period": np.random.uniform(96,160), #(128,128)
+                "amplitude": np.random.uniform(100,150), #(25,27)
+                "period": np.random.uniform(128,190), #(128,128)
             },
         )
         sine = sine_gen.generate_seasonality()
@@ -136,7 +136,7 @@ def generate_trend_sine_sum_datasets(n_series=50, length=512, a=2, b=1, add_nois
             seasonality_type=None,
             noise_type=None,
             trend_params={
-                "growth_rate": np.random.uniform(0.01000005,0.0100001), #(25,27)
+                "growth_rate": np.random.uniform(0.0100001,0.0100002), #(25,27)
             },
         )
         
@@ -169,10 +169,11 @@ def generate_trend_sine_sum_datasets(n_series=50, length=512, a=2, b=1, add_nois
         
         diverse =   trend_series + exp_series + sine_series
         diverse_transformed =  [a * ts + b for ts in diverse]
-        diverse_nl_transformed =  [
-        [0, 0] + [ts[i] - 2*ts[i-1] + ts[i-2] for i in range(2, len(ts))]
-        for ts in diverse
-        ]# [[ts[i] - ts[i-1] for i in range(1, len(ts))] for ts in diverse]
+        sigma = 5.670374419e-8
+        k = 5
+        diverse_nl_transformed = [-k * ts - k * ts **3  for ts in diverse]
+        #[sigma * ts**4 for ts in diverse]
+        # [[0, 0] + [ts[i] - 2*ts[i-1] + ts[i-2] for i in range(2, len(ts))]for ts in diverse]# [[ts[i] - ts[i-1] for i in range(1, len(ts))] for ts in diverse]
 
     # Convert to DataFrames
     trend_df = pd.DataFrame({"series": [s for s in trend_series]})
@@ -199,9 +200,9 @@ def generate_trend_sine_sum_datasets(n_series=50, length=512, a=2, b=1, add_nois
 
     return trend_df, sine_df, sum_df, exp_df, noise_df
 
-n_series = 5
+n_series = 50
 add_noise = False
-output_dir = "datasets"
+output_dir = "datasets2"
 trend_df, sine_df, sum_df, exp_df, noise_df = generate_trend_sine_sum_datasets(n_series=n_series, add_noise=add_noise, output_dir=output_dir)
 
 import os
