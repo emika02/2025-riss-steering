@@ -99,10 +99,17 @@ class TimeSeriesGenerator:
         return self.data
 
 
-def generate_trend_sine_sum_datasets(n_series=50, length=512, a=2, b=1, add_noise=False,  output_dir="datasets"):
+def generate_trend_sine_exp_datasets(
+    n_series=50,
+    length=512,
+    a=2,
+    b=1,
+    add_noise=False, #adding noise to each time series
+    angles=False, #scaling input dataset to have values in range (0,2*pi) so that they're angles
+    output_dir="datasets"):
+    
     trend_series = []
     sine_series = []
-    sum_series = []
     exp_series = []
     noise_series = []
 
@@ -113,7 +120,7 @@ def generate_trend_sine_sum_datasets(n_series=50, length=512, a=2, b=1, add_nois
             trend_type="linear",
             seasonality_type=None,
             noise_type=None,
-            trend_params={"slope": np.random.uniform(0,10), "intercept": np.random.uniform(0,10)}, #(0.05,0.1)
+            trend_params={"slope": np.random.uniform(20,30), "intercept": np.random.uniform(20,30)}, 
         )
         trend = trend_gen.generate_trend()
 
@@ -124,62 +131,65 @@ def generate_trend_sine_sum_datasets(n_series=50, length=512, a=2, b=1, add_nois
             seasonality_type="sine",
             noise_type=None,
             seasonality_params={
-                "amplitude": np.random.uniform(50,100), #(25,27)
-                "period": np.random.uniform(64,128), #(128,128)
+                "amplitude": np.random.uniform(150,200), 
+                "period": np.random.uniform(190,256), 
             },
         )
         sine = sine_gen.generate_seasonality()
         
+        #Exp generator
         exp_gen = TimeSeriesGenerator(
             length=length,
             trend_type="exponential",
             seasonality_type=None,
             noise_type=None,
             trend_params={
-                "growth_rate": np.random.uniform(0.01, 0.0100001), #(25,27)
+                "growth_rate": np.random.uniform(0.0100002, 0.0100003 )
             },
         )
+        exp = exp_gen.generate_trend()
         
+        #Noise generator
         noise = TimeSeriesGenerator(
             length=length,
             trend_type=None,
             seasonality_type=None,
             noise_type="gaussian",
             noise_params={"mean": 0, "stdev":10}
-        )
-        
+        )   
         noise = noise.generate_noise()
-        exp = exp_gen.generate_trend()
-
-        # Literal sum of trend and sine
-        added = noise + sine
         
         if add_noise == True:
             trend += noise
             sine += noise 
             exp += noise
             
-
+        if angles == True:
+            trend = ((trend - trend.min()) / (trend.max() - trend.min()))*2*np.pi
+            sine = ((sine - sine.min()) / (sine.max() - sine.min()))*2*np.pi
+            exp = ((exp - exp.min()) / (exp.max() - exp.min()))*2*np.pi
+            
         trend_series.append(trend)
         sine_series.append(sine)
-        sum_series.append(added)
         exp_series.append(exp)
         noise_series.append(noise)
 
-        
+        #Creating diverse dataset
         diverse =   trend_series + exp_series + sine_series
+        
+        #Linear transformation
         diverse_transformed =  [a * ts + b for ts in diverse]
-        sigma = 5.670374419e-8
-        k = 5
+
+        #Nonlinear transformation
         g=9.81
-        diverse_nl_transformed = [-g * ts  for ts in diverse]
+        diverse_nl_transformed = [g * np.sin(ts)  for ts in diverse]
         #[sigma * ts**4 for ts in diverse]
-        # [[0, 0] + [ts[i] - 2*ts[i-1] + ts[i-2] for i in range(2, len(ts))]for ts in diverse]# [[ts[i] - ts[i-1] for i in range(1, len(ts))] for ts in diverse]
+        # [[0, 0] + [ts[i] - 2*ts[i-1] + ts[i-2] for i in range(2, len(ts))]for ts in diverse]
+        # # [[ts[i] - ts[i-1] for i in range(1, len(ts))] for ts in diverse]
 
     # Convert to DataFrames
     trend_df = pd.DataFrame({"series": [s for s in trend_series]})
     sine_df = pd.DataFrame({"series": [s for s in sine_series]})
-    sum_df = pd.DataFrame({"series": [s for s in sum_series]})
     exp_df = pd.DataFrame({"series": [s for s in exp_series]})
     noise_df = pd.DataFrame({"series": [s for s in noise_series]})
     diverse_df = pd.DataFrame({"series": [s for s in diverse]})
@@ -190,7 +200,6 @@ def generate_trend_sine_sum_datasets(n_series=50, length=512, a=2, b=1, add_nois
     os.makedirs(output_dir, exist_ok=True)
     trend_df.to_parquet(os.path.join(output_dir, "trend.parquet"), index=False)
     sine_df.to_parquet(os.path.join(output_dir, "sine.parquet"), index=False)
-    sum_df.to_parquet(os.path.join(output_dir, "trend_plus_sine.parquet"), index=False)
     exp_df.to_parquet(os.path.join(output_dir, "exp.parquet"), index=False)
     noise_df.to_parquet(os.path.join(output_dir, "noise.parquet"), index=False)
     diverse_df.to_parquet(os.path.join(output_dir, "diverse.parquet"), index=False)
@@ -199,12 +208,14 @@ def generate_trend_sine_sum_datasets(n_series=50, length=512, a=2, b=1, add_nois
 
     print(f"Saved to {output_dir}/[trend|sine|trend_plus_sine].parquet")
 
-    return trend_df, sine_df, sum_df, exp_df, noise_df
+    return trend_df, sine_df, exp_df, noise_df
 
 n_series = 50
 add_noise = False
-output_dir = "datasets"
-trend_df, sine_df, sum_df, exp_df, noise_df = generate_trend_sine_sum_datasets(n_series=n_series, add_noise=add_noise, output_dir=output_dir)
+angles=True
+output_dir = "datasets2"
+trend_df, sine_df, exp_df, noise_df = generate_trend_sine_exp_datasets(n_series=n_series,
+                                              add_noise=add_noise, angles=angles, output_dir=output_dir)
 
 import os
 
@@ -238,9 +249,9 @@ sine_series_t = pd.Series(diverse_nl_transformed_df.iloc[2*n_series, 0])
 
 # Plot and save
 plt.figure(figsize=(12, 6))
-'''trend_series.plot(label="Trend")
+trend_series.plot(label="Trend")
 sine_series.plot(label="Sine")
-exp_series.plot(label="Exp")'''
+exp_series.plot(label="Exp")
 trend_series_t.plot(label="Trend t")
 sine_series_t.plot(label="Sine t")
 exp_series_t.plot(label="Exp t")

@@ -3,6 +3,7 @@ import pandas as pd
 import os
 from scipy.integrate import solve_ivp
 
+#Simple pendulum
 def simulate_pendulum(theta0, omega0, T=10.0, steps=512, g=9.81, L=1.0):
     def f(t, s):
         theta, omega = s
@@ -16,6 +17,7 @@ def simulate_pendulum(theta0, omega0, T=10.0, steps=512, g=9.81, L=1.0):
     
     return theta, omega_prime
 
+#Linearized simple pendulum
 def simulate_oscillator(theta0, omega0, T=10.0, steps=512, g=9.81, L=1.0):
     
     t = np.linspace(0, T, steps)
@@ -25,7 +27,7 @@ def simulate_oscillator(theta0, omega0, T=10.0, steps=512, g=9.81, L=1.0):
     
     return theta, omega_prime
 
-
+#Linearized pendulum with damping
 def simulate_underdamped(theta0, omega0, T=10.0, steps=512, g=9.81, L=1.0, gamma=0.1):
 
     t = np.linspace(0, T, steps)
@@ -40,7 +42,7 @@ def simulate_underdamped(theta0, omega0, T=10.0, steps=512, g=9.81, L=1.0, gamma
         (omega0 + gamma*theta0)/Omega_d * np.sin(Omega_d*t)
     )
     
-    # Velocity (derivative of theta)
+    # Velocity 
     omega = np.exp(-gamma*t) * (
         -theta0*Omega_d*np.sin(Omega_d*t) +
         (omega0 + gamma*theta0)*np.cos(Omega_d*t)
@@ -63,14 +65,9 @@ def generate_pendulum_datasets(n_series=150, length=512, g=9.81, L=1.0, output_d
         theta0 = np.random.uniform(-np.pi, np.pi)
         omega0 = np.random.uniform(0,1)
         theta, omega_prime = simulate_oscillator(theta0, omega0, steps=length, g=g, L=L)
-        
-        #print(type(omega_prime))
-        #print(omega_prime.shape)
-        # convert arrays to lists
         theta_series.append(theta)
         omega_prime_series.append(omega_prime)
 
-    # enforce "series" column exactly like your working generator
     theta_df = pd.DataFrame({"series": [s for s in theta_series]})
     omega_prime_df = pd.DataFrame({"series": [s for s in omega_prime_series]})
 

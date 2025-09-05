@@ -251,20 +251,7 @@ def embeddings_pca_corr(
     n=3,
     visualize=False
 ):
-    """
-    Visualize the embeddings in a selected layer and patch after applying PCA 
-    and highlight separability between sine and none samples.
-
-    Parameters:
-    sine_constant_activations: numpy array, activations for sine_constant input
-    none_constant_activations: numpy array, activations for none_constant input
-    layer_to_visualize: int, the layer index to visualize
-    patch: int, patch index to visualize
-    title: str, the title for the plot
-    output_file: str, the file name to save the plot
-    """
-
-    
+ 
     combined = np.concatenate([one_activations, other_activations], axis=0)
     pca = PCA(n_components=n)
     combined_reduced = pca.fit_transform(combined)

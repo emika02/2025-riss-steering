@@ -210,3 +210,34 @@ def plot_vector(vec, save_dir="vector_plots", title="Vector Plot"):
     save_path = os.path.join(save_dir, title + ".png")
     plt.savefig(save_path, bbox_inches='tight')
     plt.close()
+    
+    
+def plot_r2(n_pca, r2_values):
+    
+    n_pca = np.array(n_pca)
+    r2_values = np.array(r2_values)
+    
+    plt.figure(figsize=(8,5))
+    plt.plot(n_pca[:-1], r2_values[:-1], marker="o", label="Experiment values")
+
+    # add red horizontal line for the baseline
+    baseline = r2_values[-1]
+    plt.axhline(y=baseline, color="red", linestyle="--", linewidth=2,
+                label=f"Baseline (all dims): {baseline:.3f}")
+
+    # add horizontal line at y=1
+    plt.axhline(y=1.0, color="black", linestyle=":", linewidth=2, label="Perfect R² = 1")
+    plt.axhline(y=0.0, color="black", linestyle=":", linewidth=2, label="R² = 0")
+
+    # styling (3× font sizes)
+    plt.title("R² vs n_pca, half overlap, nonlinear", fontsize=20)
+    plt.xlabel("n_pca components", fontsize=17)
+    plt.ylabel("R² value", fontsize=17)
+    plt.xticks(fontsize=12)
+    plt.yticks(fontsize=12)
+    plt.legend(fontsize=12)
+    plt.grid(True, linestyle="--", alpha=0.6)
+
+    plt.tight_layout()
+    plt.savefig("results_corr/pca_curve.png", dpi=200)
+    plt.show()
