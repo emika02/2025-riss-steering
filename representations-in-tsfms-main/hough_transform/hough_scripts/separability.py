@@ -6,6 +6,7 @@ from sklearn.decomposition import PCA
 from joblib import Parallel, delayed
 from itertools import product
 from tqdm import tqdm
+import umap.umap_ as umap
 
 
 def compute_linear_separability(
@@ -245,6 +246,8 @@ def embeddings_pca(
     
     return source_reduced, target_reduced, next_reduced
 
+
+
 def embeddings_pca_corr(
     one_activations,
     other_activations,
@@ -285,6 +288,76 @@ def embeddings_pca_corr(
         plt.show()
     
     return source_reduced, target_reduced, pca
+
+
+def embeddings_umap(
+    one_activations,
+    other_activations,
+    n=2,
+    visualize=False,
+    n_neighbors=15,
+    min_dist=0.1,
+    metric="euclidean"
+):
+    """
+    Perform UMAP projection on two activation sets and optionally visualize.
+
+    Args:
+        one_activations (np.ndarray): First dataset of embeddings.
+        other_activations (np.ndarray): Second dataset of embeddings.
+        n (int): Number of dimensions for UMAP reduction (default=2).
+        visualize (bool): Whether to create a scatter plot.
+        n_neighbors (int): UMAP parameter controlling local vs. global structure.
+        min_dist (float): UMAP parameter controlling compactness of clusters.
+        metric (str): Distance metric for UMAP.
+
+    Returns:
+        source_reduced (np.ndarray): UMAP projection of first dataset.
+        target_reduced (np.ndarray): UMAP projection of second dataset.
+        reducer (umap.UMAP): Fitted UMAP reducer object.
+    """
+    
+    # Combine datasets
+    combined = np.concatenate([one_activations, other_activations], axis=0)
+    
+    # Fit UMAP
+    reducer = umap.UMAP(
+        n_components=n,
+        n_neighbors=n_neighbors,
+        min_dist=min_dist,
+        metric=metric,
+        random_state=42
+    )
+    combined_reduced = reducer.fit_transform(combined)
+    
+    # Split back into source and target
+    n_source = one_activations.shape[0]
+    n_target = other_activations.shape[0]
+
+    source_reduced = combined_reduced[:n_source]
+    target_reduced = combined_reduced[n_source:n_source+n_target]
+    
+    # Visualization
+    if visualize and n == 2:  # only makes sense to plot 2D
+        fig, ax = plt.subplots(figsize=(12, 10))
+        ax.scatter(source_reduced[:, 0], source_reduced[:, 1], c="blue", label="Dataset", alpha=0.6)
+        ax.scatter(target_reduced[:, 0], target_reduced[:, 1], c="red", label="Dataset Transformed", alpha=0.6)
+
+        ax.set_title("UMAP Projection", fontsize=30, pad=30)
+        ax.set_xlabel("UMAP-1", fontsize=26, labelpad=20)
+        ax.set_ylabel("UMAP-2", fontsize=26, labelpad=20)
+        ax.legend(loc="best", fontsize=22)
+        ax.grid(True)
+
+        plt.tight_layout()
+        plt.savefig(
+            "/zfsauton2/home/ekaczmar/representations-in-tsfms-main/representations-in-tsfms-main/hough_transform/results_corr/umap_corr.png",
+            bbox_inches="tight"
+        )
+        plt.show()
+    
+    return source_reduced, target_reduced, reducer
+
 
 
     

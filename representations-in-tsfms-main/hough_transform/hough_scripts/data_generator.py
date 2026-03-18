@@ -120,7 +120,7 @@ def generate_trend_sine_exp_datasets(
             trend_type="linear",
             seasonality_type=None,
             noise_type=None,
-            trend_params={"slope": np.random.uniform(20,30), "intercept": np.random.uniform(20,30)}, 
+            trend_params={"slope": np.random.uniform(0,10), "intercept": np.random.uniform(0,10)}, 
         )
         trend = trend_gen.generate_trend()
 
@@ -131,8 +131,8 @@ def generate_trend_sine_exp_datasets(
             seasonality_type="sine",
             noise_type=None,
             seasonality_params={
-                "amplitude": np.random.uniform(150,200), 
-                "period": np.random.uniform(190,256), 
+                "amplitude": np.random.uniform(50,100), 
+                "period": np.random.uniform(64,128), 
             },
         )
         sine = sine_gen.generate_seasonality()
@@ -144,7 +144,7 @@ def generate_trend_sine_exp_datasets(
             seasonality_type=None,
             noise_type=None,
             trend_params={
-                "growth_rate": np.random.uniform(0.0100002, 0.0100003 )
+                "growth_rate": np.random.uniform(0.01, 0.0100005 )
             },
         )
         exp = exp_gen.generate_trend()
@@ -174,18 +174,24 @@ def generate_trend_sine_exp_datasets(
         exp_series.append(exp)
         noise_series.append(noise)
 
-        #Creating diverse dataset
-        diverse =   trend_series + exp_series + sine_series
-        
-        #Linear transformation
-        diverse_transformed =  [a * ts + b for ts in diverse]
 
-        #Nonlinear transformation
-        g=9.81
-        diverse_nl_transformed = [g * np.sin(ts)  for ts in diverse]
-        #[sigma * ts**4 for ts in diverse]
-        # [[0, 0] + [ts[i] - 2*ts[i-1] + ts[i-2] for i in range(2, len(ts))]for ts in diverse]
-        # # [[ts[i] - ts[i-1] for i in range(1, len(ts))] for ts in diverse]
+
+    print("trend_var",np.mean([np.var(a) for a in trend_series]))
+    print("exp_var",np.mean([np.var(a) for a in exp_series]))
+    print("sine_var",np.mean([np.var(a) for a in sine_series]))
+  
+    #Creating diverse dataset
+    diverse =  trend_series + sine_series + exp_series
+    
+    #Linear transformation
+    diverse_transformed =  [a * ts + b for ts in diverse]
+
+    #Nonlinear transformation
+    g=9.81
+    diverse_nl_transformed = [ts**2  for ts in diverse]
+    #[sigma * ts**4 for ts in diverse]
+    # [[0, 0] + [ts[i] - 2*ts[i-1] + ts[i-2] for i in range(2, len(ts))]for ts in diverse]
+    # # [[ts[i] - ts[i-1] for i in range(1, len(ts))] for ts in diverse]
 
     # Convert to DataFrames
     trend_df = pd.DataFrame({"series": [s for s in trend_series]})
@@ -212,7 +218,7 @@ def generate_trend_sine_exp_datasets(
 
 n_series = 50
 add_noise = False
-angles=True
+angles=False
 output_dir = "datasets2"
 trend_df, sine_df, exp_df, noise_df = generate_trend_sine_exp_datasets(n_series=n_series,
                                               add_noise=add_noise, angles=angles, output_dir=output_dir)

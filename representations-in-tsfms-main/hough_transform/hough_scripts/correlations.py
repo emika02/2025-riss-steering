@@ -15,7 +15,7 @@ from sklearn.metrics import mean_squared_error, r2_score
 from .moment import  get_activations_MOMENT
 from .chronos import  get_activations_Chronos
 from .utils import load_dataset
-from .separability import embeddings_pca_corr, lda_pca_embeddings
+from .separability import embeddings_pca_corr, lda_pca_embeddings, embeddings_umap
 from .angular_plots import plot_r2
 
 
@@ -103,9 +103,9 @@ def run_correlation_experiment(
     for n in n_pca:
         print("Dim number:",n)
         if n != 0:
-            source_emb_r, target_emb_r, pca = embeddings_pca_corr(X_train, y_train, n=n) 
-            source_emb2_r = pca.transform(X_test)
-            target_emb2_r = pca.transform(y_test)
+            source_emb_r, target_emb_r, reducer = embeddings_umap(X_train, y_train, n=n) 
+            source_emb2_r = reducer.transform(X_test)
+            target_emb2_r = reducer.transform(y_test)
             #source_emb_r, target_emb_r, source_emb2_r, target_emb2_r = lda_pca_embeddings(source_emb, target_emb, source_emb2, target_emb2, n_components=n)
             
         else: #if n==0 there's no dimensionality reduction
@@ -128,9 +128,18 @@ def run_correlation_experiment(
         y_pred_train = model.predict(source_emb_r)
         y_pred_test  = model.predict(source_emb2_r)
         
+        '''mean_trends = target_emb2_r[:50,:].mean(axis=0)
+        mean_exps = target_emb2_r[50:100,:].mean(axis=0)
+        mean_sines = target_emb2_r[100:,:].mean(axis=0)
+        
+        y_pred_test = np.zeros(target_emb2_r.shape)
+        y_pred_test[:50] = mean_trends
+        y_pred_test[50:100] = mean_exps
+        y_pred_test[100:] = mean_sines'''
+                
         # evaluation
-        print("Train MSE:", mean_squared_error(source_emb_r, y_pred_train))
-        print("Train R^2:", r2_score(source_emb_r, y_pred_train))
+        print("Train MSE:", mean_squared_error(target_emb_r, y_pred_train))
+        print("Train R^2:", r2_score(target_emb_r, y_pred_train))
         print("Test  MSE:", mean_squared_error(target_emb2_r, y_pred_test))
         print("Test  R^2:", r2_score(target_emb2_r, y_pred_test))
         
@@ -174,7 +183,7 @@ def run_correlation_experiment(
     return r2
     
 num_samples=150
-n_pca=[1,2,3,4,5,6,7,8,9, 10,25,50, 100,150, 0]
+n_pca=[1,5,10,25,50, 100,150,200,500,0]
 reg="l2"
 model_type="moment"
 output_dir="results"
