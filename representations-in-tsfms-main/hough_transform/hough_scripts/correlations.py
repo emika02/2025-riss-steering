@@ -202,7 +202,7 @@ r2 = run_correlation_experiment(source_dataset_path, target_dataset_path,
                            source_dataset_path2, target_dataset_path2,
                    num_samples, n_pca, reg, model_type, output_dir, device)
 
-#Plot r2 scores vs n_pca, saved to results_corr/pca_curve
+#Plot r2 scores vs n_pca, saved to results_corr/pca_curve.png
 plot_r2(n_pca, r2)
 '''
 fig, ax = plt.subplots(figsize=(12, 10))
