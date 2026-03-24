@@ -121,7 +121,7 @@ def generate_cluster_datasets(
             trend_type="linear",
             seasonality_type=None,
             noise_type=None,
-            trend_params={"slope": np.random.uniform(0,0.5), "intercept": np.random.uniform(0,0.5)}, 
+            trend_params={"slope": np.random.uniform(0,0.005), "intercept": np.random.uniform(0,0.005)}, 
         )
         trend = trend_gen.generate_trend()
 
@@ -132,7 +132,7 @@ def generate_cluster_datasets(
             seasonality_type="sine",
             noise_type=None,
             seasonality_params={
-                "amplitude": np.random.uniform(50,100), 
+                "amplitude": np.random.uniform(0.5,1), 
                 "period": np.random.uniform(64,128), 
             },
         )
@@ -145,7 +145,7 @@ def generate_cluster_datasets(
             seasonality_type=None,
             noise_type=None,
             trend_params={
-                "growth_rate": np.random.uniform(0.01, 0.0100005 )
+                "growth_rate": np.random.uniform(0.002, 0.0020005 )
             },
         )
         exp = exp_gen.generate_trend()
@@ -199,12 +199,47 @@ def generate_cluster_datasets(
     print(f"Saved to {output_dir}/[trend|sine|trend_plus_sine].parquet")
 
 
-n_series = 200
+def generate_exp_datasets(
+    n_series=50,
+    n_transform=10,
+    length=512,
+    output_dir="datasets"):
+    
+    exp_series = []
+
+    for _ in range(n_series):
+        
+        #Exp generator
+        exp_gen = TimeSeriesGenerator(
+            length=length,
+            trend_type="exponential",
+            seasonality_type=None,
+            noise_type=None,
+            trend_params={
+                "growth_rate": np.random.uniform(0.002, 0.0020005 )
+            },
+        )
+        exp = exp_gen.generate_trend()
+
+        exp_series.append(exp)
+
+    datasets_exps = [exp_series,]
+    
+    for n in np.arange(1, n_transform,0.5):
+        datasets_exps.append([ts**(n + 0.5 )  for ts in datasets_exps[0]])
+            
+    os.makedirs(output_dir, exist_ok=True)
+
+    for ind, dataset in enumerate(datasets_exps):
+        df = pd.DataFrame({"series": [s for s in dataset]})
+        df.to_parquet(os.path.join(output_dir, "exp_dense" + str(ind + 1) + ".parquet"), index=False)
+
+n_series = 100
 add_noise = False
 angles=False
 output_dir = "datasets_clusters"
-generate_cluster_datasets(n_series=n_series, add_noise=add_noise, output_dir=output_dir)
-
+#generate_cluster_datasets(n_series=n_series, add_noise=add_noise, output_dir=output_dir)
+generate_exp_datasets(n_series=n_series, output_dir=output_dir)
 import os
 
 # Create output directory if it doesn't exist
