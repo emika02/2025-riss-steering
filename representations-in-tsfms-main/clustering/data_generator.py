@@ -1,5 +1,4 @@
 import numpy as np
-import torch
 import pandas as pd
 import yaml
 import logging
@@ -103,16 +102,11 @@ def generate_cluster_datasets(
     n_series=50,
     n_transform=10,
     length=512,
-    a=2,
-    b=1,
-    add_noise=False, #adding noise to each time series
-    angles=False, #scaling input dataset to have values in range (0,2*pi) so that they're angles
     output_dir="datasets"):
     
     trend_series = []
     sine_series = []
     exp_series = []
-    noise_series = []
 
     for _ in range(n_series):
         # Trend generator
@@ -121,7 +115,7 @@ def generate_cluster_datasets(
             trend_type="linear",
             seasonality_type=None,
             noise_type=None,
-            trend_params={"slope": np.random.uniform(0,0.005), "intercept": np.random.uniform(0,0.005)}, 
+            trend_params={"slope": np.random.uniform(0,0.009), "intercept": np.random.uniform(0,0.005)}, 
         )
         trend = trend_gen.generate_trend()
 
@@ -149,33 +143,11 @@ def generate_cluster_datasets(
             },
         )
         exp = exp_gen.generate_trend()
-        
-        #Noise generator
-        noise = TimeSeriesGenerator(
-            length=length,
-            trend_type=None,
-            seasonality_type=None,
-            noise_type="gaussian",
-            noise_params={"mean": 0, "stdev":10}
-        )   
-        noise = noise.generate_noise()
-        
-        if add_noise == True:
-            trend += noise
-            sine += noise 
-            exp += noise
-            
-        if angles == True:
-            trend = ((trend - trend.min()) / (trend.max() - trend.min()))*2*np.pi
-            sine = ((sine - sine.min()) / (sine.max() - sine.min()))*2*np.pi
-            exp = ((exp - exp.min()) / (exp.max() - exp.min()))*2*np.pi
+    
             
         trend_series.append(trend)
         sine_series.append(sine)
         exp_series.append(exp)
-        noise_series.append(noise)
-
-
 
     print("trend_var",np.mean([np.var(a) for a in trend_series]))
     print("exp_var",np.mean([np.var(a) for a in exp_series]))
@@ -234,12 +206,10 @@ def generate_exp_datasets(
         df = pd.DataFrame({"series": [s for s in dataset]})
         df.to_parquet(os.path.join(output_dir, "exp_dense" + str(ind + 1) + ".parquet"), index=False)
 
-n_series = 100
-add_noise = False
-angles=False
+n_series = 50
 output_dir = "datasets_clusters"
-#generate_cluster_datasets(n_series=n_series, add_noise=add_noise, output_dir=output_dir)
-generate_exp_datasets(n_series=n_series, output_dir=output_dir)
+generate_cluster_datasets(n_series=n_series, output_dir=output_dir)
+#generate_exp_datasets(n_series=n_series, output_dir=output_dir)
 import os
 
 # Create output directory if it doesn't exist

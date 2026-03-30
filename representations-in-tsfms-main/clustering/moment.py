@@ -1,9 +1,10 @@
 from momentfm import MOMENTPipeline
 import torch
-from .utils import load_dataset
-from .perturb import identity
+from utils import load_dataset
+from perturb import identity
 import logging
 import argparse
+import numpy as np
 
 
 def perturb_activations_MOMENT(
@@ -190,3 +191,53 @@ if __name__ == "__main__":
     logging.debug(f"Activations shape: {activations.shape}")
     
     logging.info("Activations extracted successfully")
+    
+
+def extract_activations(dataset_path, model_type="moment", num_samples=20, device="cpu"):
+    """
+    Extract activations from a dataset for the specified model
+    
+    Parameters:
+    -----------
+    dataset_path : str
+        Path to the parquet dataset
+    model_type : str
+        Model type ('moment' or 'chronos')
+    num_samples : int
+        Number of samples to use from the dataset
+    device : str
+        Device to run the model on ('cpu' or 'cuda')
+        
+    Returns:
+    --------
+    activations : numpy.ndarray
+        The activations extracted from the model
+    """
+    logging.info(f"Extracting activations from {dataset_path} using {model_type} model")
+    
+    dataset = load_dataset(dataset_path, type="torch", device=device)
+
+    if dataset.shape[0] > num_samples:
+        logging.info(f"Limiting dataset from {dataset.shape[0]} to {num_samples} samples")
+        dataset = dataset[:num_samples]
+
+            
+    if model_type.lower() == "moment":
+        activations = get_activations_MOMENT(dataset, device=device)
+        activations = activations.cpu().numpy() if device != "cpu" else activations.numpy()
+        return activations
+    
+    elif model_type.lower() == "chronos":
+        activations_encoder, activations_decoder = get_activations_Chronos(
+            dataset.squeeze(1).cpu().numpy(), device=device
+        )
+        activations_encoder = activations_encoder.cpu().numpy() if device != "cpu" else activations_encoder.numpy()
+        activations_decoder = activations_decoder.cpu().numpy() if device != "cpu" else activations_decoder.numpy()
+        return activations_encoder
+    
+    else:
+        raise ValueError(f"Unsupported model type: {model_type}")
+    
+def load_mean_activations(path, model_type, num_samples, device, layer=23):
+    activations = extract_activations(path, model_type, num_samples, device)
+    return np.mean(activations[layer, :, :, :], axis=1)
