@@ -4,6 +4,8 @@ import matplotlib.pyplot as plt
 
 def plot_knn(X_test, y_test, n_transform, powers=None):
     
+    '''plots 2d points from test set with ground truth labels'''
+    
     if powers == None:
         powers = powers = np.arange(1, int(n_transform + 1), 1)
         
@@ -39,6 +41,8 @@ def plot_knn(X_test, y_test, n_transform, powers=None):
     
 
 def plot_knn_3d(X_test, y_test, n_transform, powers=None):
+    
+    '''plots 3d points from test set with ground truth labels'''
     
     if powers == None:
         powers = powers = np.arange(1, int(n_transform + 1), 1)
