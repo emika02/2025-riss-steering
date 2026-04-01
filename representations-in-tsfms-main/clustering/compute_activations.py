@@ -22,19 +22,19 @@ from clustering.utils import load_dataset
 #from hough_scripts.separability import embeddings_pca_corr, lda_pca_embeddings, embeddings_umap
 # Shape will be: (n_transform, num_samples, dimension)
 
-num_samples=2000
+num_samples=100
 model_type="moment"
 output_dir="results"
 device="cpu"
 n_transform=10
 
-path = "/zfsauton2/home/ekaczmar/representations-in-tsfms-main/representations-in-tsfms-main/clustering/datasets_clusters/"
-#path = "/mnt/c/Users/emika/OneDrive/Pulpit/Studia 4. rok/RISS//representations-in-tsfms-main/representations-in-tsfms-main/clustering/datasets_clusters/"
-#path_save = "/mnt/c/Users/emika/OneDrive/Pulpit/Studia 4. rok/RISS//representations-in-tsfms-main/representations-in-tsfms-main/clustering/activations/"
-path_save = "/zfsauton2/home/ekaczmar/representations-in-tsfms-main/representations-in-tsfms-main/clustering/activations/"
+#path = "/zfsauton2/home/ekaczmar/representations-in-tsfms-main/representations-in-tsfms-main/clustering/datasets_clusters/"
+path = "/mnt/c/Users/emika/OneDrive/Pulpit/Studia 4. rok/RISS//representations-in-tsfms-main/representations-in-tsfms-main/clustering/datasets_clusters/"
+path_save = "/mnt/c/Users/emika/OneDrive/Pulpit/Studia 4. rok/RISS//representations-in-tsfms-main/representations-in-tsfms-main/clustering/activations/"
+#path_save = "/zfsauton2/home/ekaczmar/representations-in-tsfms-main/representations-in-tsfms-main/clustering/activations/"
 
 
-activations_trends = np.stack([
+'''activations_trends = np.stack([
     load_mean_activations(os.path.join(path, f"trends{ind+1}.parquet"), model_type, num_samples, device)
     for ind in range(n_transform)
 ])
@@ -45,15 +45,13 @@ activations_sines = np.stack([
     for ind in range(n_transform)
 ])
 
-np.save(os.path.join(path_save,'activations_sines.npy'), activations_sines)
+np.save(os.path.join(path_save,'activations_sines.npy'), activations_sines)'''
 
 activations_exps = np.stack([
     load_mean_activations(os.path.join(path, f"exps{ind+1}.parquet"), model_type, num_samples, device)
     for ind in range(n_transform)
 ])
 
-print(f"Shape: {activations_sines.shape}") # Should show (n_transform, num_samples, dim)
-print(f"Type: {type(activations_sines)}")
 
 np.save(os.path.join(path_save,'activations_exps.npy'), activations_exps)
 
