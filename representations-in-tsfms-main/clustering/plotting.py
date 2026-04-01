@@ -68,7 +68,7 @@ def plot_knn_3d(X_test, y_test, n_transform, powers=None):
                 color=color, label=label, alpha=0.6, s=60, edgecolors='white', linewidth=0.3)
 
     # Styling for 3D
-    ax.set_title(f"3D PCA trends ({n_transform} Power Transformations)", fontsize=20, pad=30)
+    ax.set_title(f"3D PCA Test set({n_transform} Power Transformations)", fontsize=20, pad=30)
     ax.set_xlabel("PC 1", fontsize=14)
     ax.set_ylabel("PC 2", fontsize=14)
     ax.set_zlabel("PC 3", fontsize=14)
