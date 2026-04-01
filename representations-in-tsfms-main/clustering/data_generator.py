@@ -115,7 +115,7 @@ def generate_cluster_datasets(
             trend_type="linear",
             seasonality_type=None,
             noise_type=None,
-            trend_params={"slope": np.random.uniform(0,0.009), "intercept": np.random.uniform(0,0.005)}, 
+            trend_params={"slope": np.random.uniform(0,0.0056), "intercept": np.random.uniform(0,0.0056)}, 
         )
         trend = trend_gen.generate_trend()
 
@@ -159,7 +159,7 @@ def generate_cluster_datasets(
     
     for datasets in [datasets_trends, datasets_sines, datasets_exps]:
         for n in range(1, n_transform):
-            datasets.append([ts**(n + 1 )  for ts in datasets[0]])
+            datasets.append([ts**(1/(n + 1) )  for ts in datasets[0]])
             
     os.makedirs(output_dir, exist_ok=True)
 
@@ -206,9 +206,10 @@ def generate_exp_datasets(
         df = pd.DataFrame({"series": [s for s in dataset]})
         df.to_parquet(os.path.join(output_dir, "exp_dense" + str(ind + 1) + ".parquet"), index=False)
 
-n_series = 50
-output_dir = "datasets_clusters"
-generate_cluster_datasets(n_series=n_series, output_dir=output_dir)
+n_series = 100
+n_transform = 20
+output_dir = "datasets_square"
+generate_cluster_datasets(n_series=n_series, output_dir=output_dir, n_transform=n_transform)
 #generate_exp_datasets(n_series=n_series, output_dir=output_dir)
 import os
 

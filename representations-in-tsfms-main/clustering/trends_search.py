@@ -56,14 +56,13 @@ output_dir="results"
 device="cpu"
 n_transform=10
 n_components = 2
+current_output_dir = "temp_datasets"
 
-for max_param in np.arange(0.005, 0.009, 0.0005):
-    generate_trend_datasets(max_param=max_param)
+for max_param in np.arange(0.005, 0.006, 0.0001):
+    generate_trend_datasets(max_param=max_param, output_dir=current_output_dir)
     
-    path = "/mnt/c/Users/emika/OneDrive/Pulpit/Studia 4. rok/RISS//representations-in-tsfms-main/representations-in-tsfms-main/clustering/datasets_clusters/"
-
     activations_trends = np.stack([
-        load_mean_activations(os.path.join(path, f"trends{ind+1}.parquet"), model_type, num_samples, device)
+        load_mean_activations(os.path.join(current_output_dir, f"trends{ind+1}.parquet"), model_type, num_samples, device)
         for ind in range(n_transform)
     ])
   
