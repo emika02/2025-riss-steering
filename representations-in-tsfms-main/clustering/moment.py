@@ -241,3 +241,85 @@ def extract_activations(dataset_path, model_type="moment", num_samples=20, devic
 def load_mean_activations(path, model_type, num_samples, device, layer=23):
     activations = extract_activations(path, model_type, num_samples, device)
     return np.mean(activations[layer, :, :, :], axis=1)
+
+
+def get_activations_MOMENT_batched(dataset, model, device="cpu", batch_size=32):
+    """
+    Extract activations from all layers of the MOMENT model using a batched approach.
+    
+    Args:
+        dataset (torch.Tensor): Input data tensor of shape (num_samples, channels, sequence_length).
+        model (MOMENTPipeline): The pre-loaded MOMENT model instance.
+        device (str): Device to run the model on ('cpu' or 'cuda').
+        batch_size (int): Number of samples to process at once to prevent OOM.
+        
+    Returns:
+        torch.Tensor: Stacked activations [layers, num_samples, tokens, 1024].
+    """
+    num_samples, channels, seq_len = dataset.shape
+    all_batches_activations = [] 
+
+    # Process in batches to keep VRAM/RAM usage low
+    for i in range(0, num_samples, batch_size):
+        batch_data = dataset[i : i + batch_size].to(device)
+        curr_batch_len = batch_data.shape[0]
+        
+        # Simple mask: 1 for all time steps (no masking for extraction)
+        input_mask = torch.ones((curr_batch_len, seq_len)).to(device)
+        
+        batch_layer_outputs = []
+        
+        def hook_fn(module, input, output):
+            # Move to CPU immediately to free up GPU memory
+            batch_layer_outputs.append(output.detach().cpu())
+
+        # Register hooks for all 24 encoder blocks
+        hooks = [block.layer[-1].register_forward_hook(hook_fn) for block in model.encoder.block]
+        
+        with torch.no_grad():
+            model(x_enc=batch_data, input_mask=input_mask)
+        
+        for h in hooks:
+            h.remove()
+        
+        # Stack layers for this batch: [layers, batch_size, tokens, 1024]
+        all_batches_activations.append(torch.stack(batch_layer_outputs))
+        
+        # Clear CUDA cache if using GPU
+        if torch.cuda.is_available() and device != "cpu":
+            torch.cuda.empty_cache()
+
+    # Concatenate all batches along the sample dimension (dim 1)
+    # Final shape: (24, num_samples, tokens, 1024)
+    return torch.cat(all_batches_activations, dim=1)
+
+
+def extract_activations_batched(dataset_path, model, model_type="moment", num_samples=2000, device="cpu"):
+    """
+    Extracts activations for a specific dataset and model instance.
+    """
+    logging.info(f"Extracting activations from {dataset_path}")
+    
+    # Load dataset using your existing utility
+    dataset = load_dataset(dataset_path, type="torch", device=device)
+
+    if dataset.shape[0] > num_samples:
+        dataset = dataset[:num_samples]
+
+    if model_type.lower() == "moment":
+        # Pass the pre-loaded model into the extraction function
+        activations = get_activations_MOMENT_batched(dataset, model, device=device)
+        return activations.numpy()
+
+
+def load_mean_activations_batched(path, model, model_type, num_samples, device, layer=23):
+    """
+    Loads activations and returns the mean across the token/sequence dimension.
+    """
+    # extract_activations now requires the model object
+    activations = extract_activations_batched(path, model, model_type, num_samples, device)
+    
+    # activations shape: [layers, samples, tokens, 1024]
+    # We select the layer and mean across tokens (axis 2)
+    # Resulting shape: (num_samples, 1024)
+    return np.mean(activations[layer, :, :, :], axis=1)
